@@ -81,5 +81,39 @@ export const tipAPI = {
       supporterCount,
       tips: data
     }
+  },
+
+  // Get recent tips across ALL tip jars (for home feed)
+  async getRecentTipsGlobal(limit: number = 10) {
+    const { data, error } = await supabase
+      .from('tips')
+      .select('*')
+      .eq('status', 'confirmed')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    
+    if (error) throw error
+    return data
+  },
+
+  // Get platform-wide statistics
+  async getPlatformStats() {
+    const { data: tips, error: tipsError } = await supabase
+      .from('tips')
+      .select('amount, tip_jar_id')
+      .eq('status', 'confirmed')
+    
+    if (tipsError) throw tipsError
+    
+    const totalRaised = tips.reduce((sum, tip) => sum + Number(tip.amount), 0)
+    const uniqueTipJars = new Set(tips.map(tip => tip.tip_jar_id)).size
+    const totalTips = tips.length
+    
+    return {
+      totalRaised,
+      totalProjects: uniqueTipJars,
+      totalTips,
+      activeSupporters: totalTips // You might want to track unique supporters differently
+    }
   }
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { TipJarCard, type TipJar } from "~/components/ui/TipJarCard";
 import { Button } from "~/components/ui/Button";
+import { supabase, tipAPI, type TipRecord } from "~/lib/supabase";
 
 // Featured/trending tip jars for home
 const featuredTipJars: TipJar[] = [
@@ -36,14 +37,6 @@ const platformStats = {
   activeSupporters: { value: 8429, display: "8.4k+" }
 };
 
-// Recent activities for live feed
-const recentActivities = [
-  { id: "1", user: "@dev_mike", action: "received", amount: 25, project: "AI Tool", time: "2m ago" },
-  { id: "2", user: "@artist_jane", action: "created", project: "Digital Art Collection", time: "5m ago" },
-  { id: "3", user: "@chef_tom", action: "received", amount: 15, project: "Food Truck", time: "8m ago" },
-  { id: "4", user: "@writer_anna", action: "reached goal", project: "Poetry Book", time: "12m ago" }
-];
-
 // Tips and insights
 const dailyTips = [
   {
@@ -62,6 +55,16 @@ const dailyTips = [
     content: "Share your tip jar on social media for maximum visibility."
   }
 ];
+
+interface RecentActivity {
+  id: string;
+  user: string;
+  action: string;
+  amount?: number;
+  project: string;
+  time: string;
+  type: 'tip' | 'create' | 'goal';
+}
 
 interface HomeScreenProps {
   onTipJarClick?: (tipJarId: string) => void;
@@ -89,6 +92,141 @@ export default function HomeScreen({
     raised: 0,
     supporters: 0
   });
+
+  // Real-time activity state
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+
+  // Load recent tips from database
+  const loadRecentActivities = async () => {
+    try {
+      setActivityLoading(true);
+      
+      // Get recent confirmed tips from all tip jars using the new API
+      const recentTips = await tipAPI.getRecentTipsGlobal(5);
+
+      // Convert tips to activity format
+      const tipActivities: RecentActivity[] = recentTips.map(tip => ({
+        id: tip.id!,
+        user: tip.show_name && tip.supporter_username ? tip.supporter_username : "Anonymous",
+        action: "received",
+        amount: Number(tip.amount),
+        project: `Tip Jar #${tip.tip_jar_id}`, // You might want to join with tip_jars table to get actual project names
+        time: formatTimeAgo(tip.created_at!),
+        type: 'tip'
+      }));
+
+      // Add mock non-tip activities for variety
+      const mockActivities: RecentActivity[] = [
+        { 
+          id: "mock_1", 
+          user: "@artist_jane", 
+          action: "created", 
+          project: "Digital Art Collection", 
+          time: "1h ago", 
+          type: 'create' 
+        },
+        { 
+          id: "mock_2", 
+          user: "@chef_tom", 
+          action: "received", 
+          amount: 15, 
+          project: "Food Truck", 
+          time: "2h ago", 
+          type: 'tip' 
+        },
+        { 
+          id: "mock_3", 
+          user: "@writer_anna", 
+          action: "reached goal", 
+          project: "Poetry Book", 
+          time: "3h ago", 
+          type: 'goal' 
+        },
+        { 
+          id: "mock_4", 
+          user: "@dev_sarah", 
+          action: "received", 
+          amount: 50, 
+          project: "AI Fitness App", 
+          time: "4h ago", 
+          type: 'tip' 
+        },
+        { 
+          id: "mock_5", 
+          user: "@music_prod", 
+          action: "created", 
+          project: "Beat Making Course", 
+          time: "5h ago", 
+          type: 'create' 
+        }
+      ];
+
+      // Combine: real tips first, then mock data
+      const allActivities = [...tipActivities, ...mockActivities]
+        .slice(0, 8); // Show 8 total activities
+
+      setRecentActivities(allActivities);
+
+    } catch (error) {
+      console.error('Error loading recent activities:', error);
+      // Fallback to mock data only on error
+      const fallbackActivities: RecentActivity[] = [
+        { id: "fallback_1", user: "@dev_mike", action: "received", amount: 25, project: "AI Tool", time: "2m ago", type: 'tip' },
+        { id: "fallback_2", user: "@artist_jane", action: "created", project: "Digital Art Collection", time: "5m ago", type: 'create' },
+        { id: "fallback_3", user: "@chef_tom", action: "received", amount: 15, project: "Food Truck", time: "8m ago", type: 'tip' },
+        { id: "fallback_4", user: "@writer_anna", action: "reached goal", project: "Poetry Book", time: "12m ago", type: 'goal' }
+      ];
+      setRecentActivities(fallbackActivities);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  // Format timestamp to human readable
+  const formatTimeAgo = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMinutes < 1) return "Just now";
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  // Load activities on mount and set up real-time updates
+  useEffect(() => {
+    loadRecentActivities();
+
+    // Set up real-time subscription for new tips
+    const subscription = supabase
+      .channel('tips-channel')
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'tips',
+          filter: 'status=eq.confirmed'
+        }, 
+        (payload) => {
+          console.log('New tip received:', payload);
+          loadRecentActivities(); // Reload activities when new tip is confirmed
+        }
+      )
+      .subscribe();
+
+    // Refresh activities every 30 seconds
+    const interval = setInterval(loadRecentActivities, 30000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearInterval(interval);
+    };
+  }, []);
 
   // Animate stats on mount
   useEffect(() => {
@@ -137,6 +275,72 @@ export default function HomeScreen({
     if (type === "raised") return `$${(value / 1000).toFixed(0)}k+`;
     if (value > 1000) return `${(value / 1000).toFixed(1)}k+`;
     return value.toString();
+  };
+
+  const renderActivityItem = (activity: RecentActivity, index: number) => {
+    const getActivityText = () => {
+      switch (activity.action) {
+        case "received":
+          return (
+            <>
+              <span className="font-semibold text-foreground">{activity.user}</span>
+              <span className="text-muted-foreground"> received </span>
+              <span className="text-green-600 font-semibold">${activity.amount} </span>
+              <span className="text-foreground font-medium">{activity.project}</span>
+            </>
+          );
+        case "created":
+          return (
+            <>
+              <span className="font-semibold text-foreground">{activity.user}</span>
+              <span className="text-muted-foreground"> created </span>
+              <span className="text-foreground font-medium">{activity.project}</span>
+            </>
+          );
+        case "reached goal":
+          return (
+            <>
+              <span className="font-semibold text-foreground">{activity.user}</span>
+              <span className="text-green-600"> reached goal for </span>
+              <span className="text-foreground font-medium">{activity.project}</span>
+            </>
+          );
+        default:
+          return (
+            <>
+              <span className="font-semibold text-foreground">{activity.user}</span>
+              <span className="text-muted-foreground"> {activity.action} </span>
+              <span className="text-foreground font-medium">{activity.project}</span>
+            </>
+          );
+      }
+    };
+
+    const getDotColor = () => {
+      switch (activity.type) {
+        case 'tip': return 'bg-green-500';
+        case 'create': return 'bg-blue-500';
+        case 'goal': return 'bg-yellow-500';
+        default: return 'bg-primary';
+      }
+    };
+
+    return (
+      <div 
+        key={activity.id} 
+        className={`flex items-center gap-3 text-sm transition-all duration-500 ${
+          index === 0 ? 'opacity-100' : index === 1 ? 'opacity-70' : 'opacity-40'
+        }`}
+      >
+        <div className={`w-2 h-2 ${getDotColor()} rounded-full flex-shrink-0 ${
+          index === 0 && activity.type === 'tip' ? 'animate-pulse' : ''
+        }`}></div>
+        <div className="flex-1">
+          {getActivityText()}
+        </div>
+        <span className="text-xs text-muted-foreground">{activity.time}</span>
+      </div>
+    );
   };
 
   return (
@@ -210,43 +414,42 @@ export default function HomeScreen({
         </div>
       </div>
 
-      {/* Live Activity Feed */}
+      {/* Live Activity Feed with Real Data */}
       <div className="bg-gradient-to-r from-card to-card/80 border border-border rounded-2xl p-6 mb-8 shadow-lg">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
             <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
             <span>Live Activity</span>
           </h2>
-          <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">Real-time</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">Real-time</span>
+            {activityLoading && (
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+            )}
+          </div>
         </div>
-        <div className="space-y-3 max-h-32 overflow-hidden">
-          {recentActivities.map((activity, index) => (
-            <div 
-              key={activity.id} 
-              className={`flex items-center gap-3 text-sm transition-all duration-500 ${
-                index === 0 ? 'opacity-100' : index === 1 ? 'opacity-70' : 'opacity-40'
-              }`}
-            >
-              <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0"></div>
-              <div className="flex-1">
-                <span className="font-semibold text-foreground">{activity.user}</span>
-                {activity.action === "received" && (
-                  <span className="text-muted-foreground"> received </span>
-                )}
-                {activity.action === "created" && (
-                  <span className="text-muted-foreground"> created </span>
-                )}
-                {activity.action === "reached goal" && (
-                  <span className="text-green-600"> reached goal for </span>
-                )}
-                {activity.amount && (
-                  <span className="text-green-600 font-semibold">${activity.amount} </span>
-                )}
-                <span className="text-foreground font-medium">{activity.project}</span>
+        <div className="space-y-3 max-h-40 overflow-hidden">
+          {activityLoading ? (
+            // Loading skeleton
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={`loading-${index}`} className="flex items-center gap-3 animate-pulse">
+                <div className="w-2 h-2 bg-muted rounded-full"></div>
+                <div className="flex-1">
+                  <div className="h-4 bg-muted rounded w-3/4"></div>
+                </div>
+                <div className="h-3 bg-muted rounded w-12"></div>
               </div>
-              <span className="text-xs text-muted-foreground">{activity.time}</span>
+            ))
+          ) : recentActivities.length === 0 ? (
+            // Empty state
+            <div className="text-center py-4 text-muted-foreground">
+              <span className="text-2xl block mb-2">👀</span>
+              <p className="text-sm">No recent activity yet</p>
             </div>
-          ))}
+          ) : (
+            // Real activities
+            recentActivities.map((activity, index) => renderActivityItem(activity, index))
+          )}
         </div>
       </div>
 
