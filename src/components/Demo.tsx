@@ -5,8 +5,11 @@ import {
   useAccount,
   useDisconnect,
   useConnect,
-  useBalance
+  useBalance,
+  useWriteContract,
+  useWaitForTransactionReceipt
 } from "wagmi";
+import { parseUnits } from "viem";
 
 import { Button } from "~/components/ui/Button";
 import { truncateAddress } from "~/lib/truncateAddress";
@@ -30,12 +33,27 @@ interface NeynarUser {
 
 interface ModalState {
   isOpen: boolean;
-  screen: "tipjar-detail" | "support" | null;
+  screen: "tipjar-detail" | "support" | "success" | null;
   data?: any;
 }
 
 // USDC contract address on Base
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const DEMO_RECIPIENT_ADDRESS = "0x848D8fb144c88a02EA74AcE06D25dC320a853315";
+
+// USDC ABI (minimal - just transfer function)
+const USDC_ABI = [
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" }
+    ],
+    outputs: [{ name: "", type: "bool" }]
+  }
+] as const;
 
 export default function Demo(
   { title }: { title?: string } = { title: "Social Tip Jar" }
@@ -43,6 +61,8 @@ export default function Demo(
   const { isSDKLoaded, context } = useMiniApp();
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [neynarUser, setNeynarUser] = useState<NeynarUser | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [currentTipData, setCurrentTipData] = useState<any>(null);
   
   // Modal state for overlay screens
   const [modal, setModal] = useState<ModalState>({
@@ -55,6 +75,13 @@ export default function Demo(
   const { disconnect } = useDisconnect();
   const { connect, connectors } = useConnect();
 
+  // USDC contract interaction
+  const { writeContract, data: txHash, error: txError, isPending } = useWriteContract();
+  
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
   // Get ETH balance
   const { data: ethBalance } = useBalance({
     address: address,
@@ -62,7 +89,7 @@ export default function Demo(
   });
 
   // Get USDC balance
-  const { data: usdcBalance } = useBalance({
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useBalance({
     address: address,
     token: USDC_ADDRESS,
     chainId: base.id,
@@ -74,6 +101,39 @@ export default function Demo(
     console.log("address", address);
     console.log("isConnected", isConnected);
   }, [context, address, isConnected, isSDKLoaded]);
+
+  // Handle successful transaction confirmation
+  useEffect(() => {
+    if (isConfirmed && txHash && currentTipData) {
+      console.log("✅ Transaction confirmed:", txHash);
+      
+      // Refresh USDC balance
+      refetchUsdcBalance();
+      
+      // Show success modal with details
+      setModal({
+        isOpen: true,
+        screen: "success",
+        data: {
+          ...currentTipData,
+          txHash,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Clear current tip data
+      setCurrentTipData(null);
+    }
+  }, [isConfirmed, txHash, currentTipData, refetchUsdcBalance]);
+
+  // Handle transaction errors
+  useEffect(() => {
+    if (txError) {
+      console.error("❌ Transaction failed:", txError);
+      setSuccessMessage("❌ Transaction failed. Please try again.");
+      setCurrentTipData(null);
+    }
+  }, [txError]);
 
   // Fetch Neynar user object when context is available
   useEffect(() => {
@@ -93,6 +153,16 @@ export default function Demo(
 
     fetchNeynarUserObject();
   }, [context?.user?.fid]);
+
+  // Auto-hide success message after 5 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   // Navigation Handlers
   const openTipJarDetail = useCallback((tipJarId: string) => {
@@ -121,32 +191,209 @@ export default function Demo(
   }, []);
 
   const handleSaveTipJar = useCallback((formData: any) => {
-    console.log("Creating tip jar:", formData);
-    // TODO: Implement actual tip jar creation
-    alert("Tip jar created successfully!");
+    console.log("📝 Creating tip jar:", formData);
+    console.log("👤 Creator address:", address);
+    
+    // For demo - just show success, no API calls needed
+    setSuccessMessage("🎉 Tip jar created successfully!");
     setActiveTab("home");
-  }, []);
+  }, [address]);
 
-  const handleSendTip = useCallback((tipData: any) => {
-    console.log("Sending tip:", tipData);
-    // TODO: Implement actual tip sending
-    alert(`Tip of $${tipData.amount} sent successfully!`);
-    closeModal();
-  }, [closeModal]);
+  // Updated handleSendTip with actual USDC contract call
+  const handleSendTip = useCallback(async (tipData: {
+    tipJarId: string;
+    amount: number;
+    message?: string;
+    showName: boolean;
+  }) => {
+    console.log("💰 Sending USDC tip:", tipData);
+    
+    if (!isConnected || !address) {
+      setSuccessMessage("⚠️ Please connect your wallet first!");
+      return;
+    }
+
+    try {
+      // Store tip data for success modal
+      setCurrentTipData(tipData);
+      
+      // Convert amount to USDC units (6 decimals)
+      const amountInUnits = parseUnits(tipData.amount.toString(), 6);
+      
+      // Execute USDC transfer
+      writeContract({
+        address: USDC_ADDRESS,
+        abi: USDC_ABI,
+        functionName: "transfer",
+        args: [DEMO_RECIPIENT_ADDRESS as `0x${string}`, amountInUnits],
+      });
+      
+      console.log("🔄 Transaction initiated for", tipData.amount, "USDC");
+      
+    } catch (error) {
+      console.error("❌ Error initiating transaction:", error);
+      setSuccessMessage("❌ Failed to send tip. Please try again.");
+      setCurrentTipData(null);
+    }
+  }, [isConnected, address, writeContract]);
 
   const handleWithdraw = useCallback(() => {
-    console.log("Withdrawing funds...");
-    // TODO: Implement withdrawal
-    alert("Withdrawal initiated!");
+    console.log("💰 Withdrawing funds...");
+    setSuccessMessage("💰 Withdrawal initiated!");
   }, []);
 
   const handleShare = useCallback((tipJarId: string) => {
     console.log("Sharing tip jar:", tipJarId);
-    // TODO: Implement sharing
-    const shareUrl = `${process.env.NEXT_PUBLIC_URL}/tipjar/${tipJarId}`;
-    navigator.clipboard.writeText(shareUrl);
-    alert("Share link copied!");
+    
+    try {
+      const shareUrl = `${window.location.origin}/tipjar/${tipJarId}`;
+      navigator.clipboard.writeText(shareUrl);
+      setSuccessMessage("📋 Share link copied to clipboard!");
+    } catch (error) {
+      console.error("Failed to copy to clipboard:", error);
+      setSuccessMessage("📱 Share feature coming soon!");
+    }
   }, []);
+
+  // Check if wallet is connected before showing support screen
+  const handleSupportWithWalletCheck = useCallback((tipJarId: string, tipJarTitle: string) => {
+    if (!isConnected) {
+      setSuccessMessage("⚠️ Please connect your wallet first to send tips");
+      setActiveTab("profile"); // Redirect to profile to connect wallet
+      return;
+    }
+    
+    openSupportScreen(tipJarId, tipJarTitle);
+  }, [isConnected, openSupportScreen]);
+
+  // Success Modal Component
+  const SuccessModal = ({ data }: { data: any }) => (
+    <div className="fixed inset-0 bg-white z-50 overflow-y-auto">
+      <div className="px-4 py-6 max-w-md mx-auto min-h-screen bg-background">
+        {/* Header */}
+        <div className="text-center mb-8 pt-8">
+          <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <span className="text-4xl">🎉</span>
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">
+            Tip Sent Successfully!
+          </h1>
+          <p className="text-muted-foreground">
+            Your USDC tip has been sent via Base Pay
+          </p>
+        </div>
+
+        {/* Transaction Details */}
+        <div className="space-y-6">
+          {/* Amount Card */}
+          <div className="bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-2xl p-6">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-800 mb-1">
+                ${data.amount} USDC
+              </div>
+              <div className="text-sm text-green-600">
+                Tip Amount
+              </div>
+            </div>
+          </div>
+
+          {/* Tip Jar Details */}
+          <div className="bg-card border border-border rounded-2xl p-6">
+            <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
+              🏺 <span>Tip Jar Details</span>
+            </h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Tip Jar ID:</span>
+                <span className="font-mono text-sm text-foreground">{data.tipJarId}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Visibility:</span>
+                <span className="text-foreground">{data.showName ? "Public" : "Anonymous"}</span>
+              </div>
+              {data.message && (
+                <div>
+                  <div className="text-muted-foreground mb-2">Message:</div>
+                  <div className="bg-accent/50 rounded-lg p-3 text-sm text-foreground italic">
+                    "{data.message}"
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Transaction Info */}
+          <div className="bg-card border border-border rounded-2xl p-6">
+            <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
+              🔗 <span>Transaction Details</span>
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <div className="text-muted-foreground text-sm mb-1">Transaction Hash:</div>
+                <div className="font-mono text-xs text-foreground break-all bg-accent/50 p-3 rounded-lg">
+                  {data.txHash}
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Network:</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-foreground">Base</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Status:</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-green-600 font-medium">Confirmed</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            <a
+              href={`https://basescan.org/tx/${data.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-medium text-center transition-colors duration-200 flex items-center justify-center gap-2"
+            >
+              <span>View on BaseScan</span>
+              <span className="text-lg">↗</span>
+            </a>
+            
+            <Button
+              onClick={() => {
+                closeModal();
+                setActiveTab("home");
+              }}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-3 rounded-xl font-medium"
+            >
+              🏠 Back to Home
+            </Button>
+          </div>
+
+          {/* Share Success */}
+          <div className="text-center">
+            <button
+              onClick={() => {
+                const successText = `🎉 Just sent $${data.amount} USDC tip via Social Tip Jar on Base! Tx: ${data.txHash}`;
+                navigator.clipboard.writeText(successText);
+                setSuccessMessage("📋 Success message copied!");
+              }}
+              className="text-primary hover:text-primary/80 text-sm font-medium transition-colors duration-200"
+            >
+              📤 Share this success
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom spacing */}
+        <div className="mb-20"></div>
+      </div>
+    </div>
+  );
 
   if (!isSDKLoaded) {
     return (
@@ -180,7 +427,7 @@ export default function Demo(
                 onSupport={(tipJarId) => {
                   // Get tip jar title for support screen
                   const tipJarTitle = "Sample Tip Jar"; // TODO: Get actual title
-                  openSupportScreen(tipJarId, tipJarTitle);
+                  handleSupportWithWalletCheck(tipJarId, tipJarTitle);
                 }}
                 onShare={handleShare}
               />
@@ -200,11 +447,53 @@ export default function Demo(
                 onSendTip={handleSendTip}
               />
             )}
+            {modal.screen === "success" && modal.data && (
+              <SuccessModal data={modal.data} />
+            )}
+          </div>
+        )}
+
+        {/* Transaction Processing Overlay */}
+        {(isPending || isConfirming) && (
+          <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center">
+            <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 text-center shadow-2xl">
+              <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                {isPending ? "Confirming Transaction..." : "Processing on Base..."}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {isPending ? "Please confirm in your wallet" : "Your tip is being processed on the blockchain"}
+              </p>
+              {currentTipData && (
+                <div className="mt-4 p-3 bg-primary/10 rounded-lg">
+                  <div className="text-sm text-primary font-medium">
+                    Sending ${currentTipData.amount} USDC
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* Main App Content */}
         <div className={modal.isOpen ? "hidden" : ""}>
+          {/* Success Message Toast */}
+          {successMessage && (
+            <div className="fixed top-4 left-4 right-4 z-40 max-w-md mx-auto">
+              <div className="bg-green-500 text-white px-4 py-3 rounded-xl shadow-lg border border-green-600 animate-in slide-in-from-top duration-300">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{successMessage}</span>
+                  <button 
+                    onClick={() => setSuccessMessage(null)}
+                    className="ml-auto text-white/80 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Clean Enhanced Header */}
           <div className="bg-gradient-to-r from-primary/8 via-primary/5 to-primary/8 border-b border-border px-4 py-4 mb-4 shadow-sm">
             <div className="flex items-center justify-center max-w-md mx-auto">

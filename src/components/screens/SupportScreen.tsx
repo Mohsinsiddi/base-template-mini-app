@@ -3,56 +3,131 @@
 import { useState } from "react";
 import { QuickTipButtons } from "~/components/ui/QuickTipButtons";
 import { Button } from "~/components/ui/Button";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { parseUnits } from "viem";
 
 interface SupportScreenProps {
   tipJarId: string;
   tipJarTitle: string;
   onBack?: () => void;
-  onSendTip?: (data: {
+  onTipSuccess?: (data: {
     tipJarId: string;
     amount: number;
     message?: string;
     showName: boolean;
+    txHash: string;
   }) => void;
 }
 
-const APP_FEE_PERCENTAGE = 2; // 2% app fee
+// USDC Contract on Base Mainnet
+const USDC_CONTRACT_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+// Demo recipient address (your address for safe demo)
+const DEMO_RECIPIENT_ADDRESS = "0x802D8097eC1D49808F3c2c866020442891adde57";
+
+// USDC ABI (minimal - just transfer function)
+const USDC_ABI = [
+  {
+    name: "transfer", 
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" }
+    ],
+    outputs: [{ name: "", type: "bool" }]
+  }
+] as const;
 
 export default function SupportScreen({
   tipJarId,
   tipJarTitle,
   onBack,
-  onSendTip
+  onTipSuccess
 }: SupportScreenProps) {
   const [selectedAmount, setSelectedAmount] = useState<number | undefined>();
   const [message, setMessage] = useState("");
   const [showName, setShowName] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
 
-  // Calculate fees
-  const tipAmount = selectedAmount || 0;
-  const appFee = (tipAmount * APP_FEE_PERCENTAGE) / 100;
-  const totalAmount = tipAmount + appFee;
+  const { writeContract, data: txHash, error, isPending } = useWriteContract();
+  
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  const isProcessing = isPending || isConfirming || isRecording;
 
   const handleSendTip = async () => {
     if (!selectedAmount) return;
 
-    setIsProcessing(true);
     try {
-      // Simulate transaction processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Convert amount to USDC units (6 decimals)
+      const amountInUnits = parseUnits(selectedAmount.toString(), 6);
       
-      onSendTip?.({
+      // Execute USDC transfer to demo address
+      writeContract({
+        address: USDC_CONTRACT_ADDRESS,
+        abi: USDC_ABI,
+        functionName: "transfer",
+        args: [DEMO_RECIPIENT_ADDRESS as `0x${string}`, amountInUnits],
+      });
+      
+    } catch (error) {
+      console.error("Error sending USDC:", error);
+    }
+  };
+
+  // Handle successful transaction
+  const handleTransactionSuccess = async () => {
+    if (!isConfirmed || !txHash || !selectedAmount) return;
+    
+    setIsRecording(true);
+    
+    try {
+      // Record tip in database (optional for demo)
+      await fetch('/api/tips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipJarId,
+          amount: selectedAmount,
+          message: message.trim() || undefined,
+          isAnonymous: !showName,
+          txHash,
+          recipientAddress: DEMO_RECIPIENT_ADDRESS,
+          createdAt: new Date().toISOString()
+        })
+      });
+
+      // Notify parent component
+      onTipSuccess?.({
         tipJarId,
         amount: selectedAmount,
         message: message.trim() || undefined,
-        showName
+        showName,
+        txHash
       });
+
     } catch (error) {
-      console.error("Error sending tip:", error);
+      console.error("Failed to record tip:", error);
+      // Transaction succeeded even if recording failed
     } finally {
-      setIsProcessing(false);
+      setIsRecording(false);
     }
+  };
+
+  // Auto-handle success
+  if (isConfirmed && txHash && !isRecording) {
+    handleTransactionSuccess();
+  }
+
+  const getButtonText = () => {
+    if (isPending) return "Confirming Transaction...";
+    if (isConfirming) return "Processing on Base...";
+    if (isRecording) return "Recording Tip...";
+    if (isConfirmed) return "✅ Tip Sent Successfully!";
+    if (selectedAmount) return `💳 Send $${selectedAmount} USDC`;
+    return "💳 Select Amount to Continue";
   };
 
   return (
@@ -61,7 +136,8 @@ export default function SupportScreen({
       <div className="flex items-center mb-6">
         <button 
           onClick={onBack}
-          className="w-10 h-10 bg-accent hover:bg-accent/80 rounded-xl flex items-center justify-center border border-border transition-all duration-200 mr-4"
+          disabled={isProcessing}
+          className="w-10 h-10 bg-accent hover:bg-accent/80 rounded-xl flex items-center justify-center border border-border transition-all duration-200 mr-4 disabled:opacity-50"
         >
           <span className="text-lg">←</span>
         </button>
@@ -69,11 +145,54 @@ export default function SupportScreen({
           <h1 className="font-bold text-foreground text-lg leading-tight">
             Support: {tipJarTitle}
           </h1>
-          <p className="text-xs text-muted-foreground">Send USDC tip to creator</p>
+          <p className="text-xs text-muted-foreground">Send USDC tip via Base Pay</p>
         </div>
       </div>
 
       <div className="space-y-8">
+        {/* Transaction Progress (show when processing) */}
+        {isProcessing && (
+          <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <div>
+                <h3 className="font-bold text-foreground">{getButtonText()}</h3>
+                <p className="text-xs text-muted-foreground">Please wait while we process your tip</p>
+              </div>
+            </div>
+            
+            {/* Progress indicator */}
+            <div className="space-y-2">
+              <div className={`flex items-center gap-2 text-sm ${isPending ? 'text-primary' : isConfirmed ? 'text-green-600' : 'text-muted-foreground'}`}>
+                <span className="w-2 h-2 rounded-full bg-current"></span>
+                Sending ${selectedAmount} USDC
+                {isConfirmed && <span className="text-xs opacity-60">✓</span>}
+              </div>
+              <div className={`flex items-center gap-2 text-sm ${isRecording ? 'text-primary' : !isConfirmed ? 'text-muted-foreground' : 'text-green-600'}`}>
+                <span className="w-2 h-2 rounded-full bg-current"></span>
+                Recording transaction
+                {!isRecording && isConfirmed && <span className="text-xs opacity-60">✓</span>}
+              </div>
+            </div>
+
+            {/* Transaction hash (once available) */}
+            {txHash && (
+              <div className="mt-4 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                <p className="text-xs text-muted-foreground mb-1">Transaction Hash:</p>
+                <p className="text-xs font-mono text-primary break-all">{txHash}</p>
+                <a 
+                  href={`https://basescan.org/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline"
+                >
+                  View on BaseScan →
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Enhanced Amount Selection */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
           <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
@@ -84,6 +203,7 @@ export default function SupportScreen({
             selectedAmount={selectedAmount}
             variant="default"
             showCustom={true}
+            disabled={isProcessing}
           />
         </div>
 
@@ -95,10 +215,11 @@ export default function SupportScreen({
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Good luck with your app!"
+            placeholder="Good luck with your project!"
             rows={3}
             maxLength={200}
-            className="w-full px-4 py-4 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary resize-none transition-all duration-200"
+            disabled={isProcessing}
+            className="w-full px-4 py-4 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary resize-none transition-all duration-200 disabled:opacity-50"
           />
           <div className="text-xs text-muted-foreground mt-2 text-right">
             {message.length}/200
@@ -123,7 +244,8 @@ export default function SupportScreen({
             </div>
             <button
               onClick={() => setShowName(!showName)}
-              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${
+              disabled={isProcessing}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 disabled:opacity-50 ${
                 showName ? "bg-primary" : "bg-accent"
               }`}
             >
@@ -136,7 +258,7 @@ export default function SupportScreen({
           </div>
         </div>
 
-        {/* Enhanced Transaction Summary */}
+        {/* Transaction Summary */}
         {selectedAmount && (
           <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-2xl p-6">
             <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
@@ -145,15 +267,17 @@ export default function SupportScreen({
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Tip Amount:</span>
-                <span className="font-semibold text-foreground">${tipAmount.toFixed(2)} USDC</span>
+                <span className="font-semibold text-foreground">${selectedAmount.toFixed(2)} USDC</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">App Fee ({APP_FEE_PERCENTAGE}%):</span>
-                <span className="font-semibold text-foreground">${appFee.toFixed(2)} USDC</span>
+                <span className="text-muted-foreground">Recipient:</span>
+                <span className="font-mono text-xs text-foreground">
+                  {DEMO_RECIPIENT_ADDRESS.slice(0, 6)}...{DEMO_RECIPIENT_ADDRESS.slice(-4)}
+                </span>
               </div>
               <div className="border-t border-primary/20 pt-3 flex justify-between items-center">
                 <span className="font-bold text-foreground">You Send:</span>
-                <span className="font-bold text-foreground text-lg">${totalAmount.toFixed(2)} USDC</span>
+                <span className="font-bold text-foreground text-lg">${selectedAmount.toFixed(2)} USDC</span>
               </div>
             </div>
           </div>
@@ -162,12 +286,13 @@ export default function SupportScreen({
         {/* Enhanced Send Button */}
         <Button
           onClick={handleSendTip}
-          disabled={!selectedAmount || isProcessing}
+          disabled={!selectedAmount || isProcessing || isConfirmed}
           isLoading={isProcessing}
           className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground py-4 rounded-2xl font-bold text-lg shadow-lg disabled:from-muted disabled:to-muted disabled:text-muted-foreground transition-all duration-200"
         >
-          {isProcessing ? "Processing..." : selectedAmount ? `💳 Send ${selectedAmount} via Base Pay` : "💳 Select Amount to Continue"}
+          {getButtonText()}
         </Button>
+
 
         {/* Enhanced Security Note */}
         <div className="text-center">
@@ -180,7 +305,7 @@ export default function SupportScreen({
         </div>
 
         {/* Enhanced Preview */}
-        {selectedAmount && (
+        {selectedAmount && !isProcessing && (
           <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
             <h4 className="text-sm font-bold text-blue-700 mb-3 flex items-center gap-2">
               👁️ <span>Preview</span>
@@ -202,6 +327,17 @@ export default function SupportScreen({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Success State */}
+        {isConfirmed && (
+          <div className="bg-gradient-to-r from-green-500/10 to-green-600/10 border border-green-500/20 rounded-2xl p-6 text-center">
+            <div className="text-4xl mb-3">🎉</div>
+            <h3 className="font-bold text-green-800 mb-2">Tip Sent Successfully!</h3>
+            <p className="text-sm text-green-700">
+              Your ${selectedAmount} USDC tip has been sent via Base Pay
+            </p>
           </div>
         )}
       </div>
