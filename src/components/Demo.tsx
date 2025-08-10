@@ -205,23 +205,33 @@ export default function Demo(
 
         {/* Main App Content */}
         <div className={modal.isOpen ? "hidden" : ""}>
-          {/* Enhanced Header */}
-          <div className="bg-gradient-to-r from-primary/5 to-primary/10 border-b border-border px-4 py-4 mb-4">
-            <div className="flex items-center justify-between max-w-md mx-auto">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-sm">
-                  <span className="text-xl">🏠</span>
+          {/* Clean Enhanced Header */}
+          <div className="bg-gradient-to-r from-primary/8 via-primary/5 to-primary/8 border-b border-border px-4 py-4 mb-4 shadow-sm">
+            <div className="flex items-center justify-center max-w-md mx-auto">
+              <div className="flex items-center gap-4">
+                {/* Enhanced App Logo */}
+                <div className="relative">
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center shadow-lg border border-primary/20">
+                    <div className="relative">
+                      {/* Logo icon with layered design */}
+                      <span className="text-2xl">🏺</span>
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm animate-pulse"></div>
+                    </div>
+                  </div>
+                  {/* Subtle glow effect */}
+                  <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-xl -z-10"></div>
                 </div>
-                <div>
-                  <h1 className="font-bold text-foreground text-lg">Social Tip Jar</h1>
-                  <p className="text-xs text-muted-foreground">Support creators with USDC</p>
+                
+                {/* Clean App Name and Tagline */}
+                <div className="flex-1">
+                  <h1 className="font-black text-xl text-foreground bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                    Social Tip Jar
+                  </h1>
+                  <p className="text-xs text-muted-foreground font-medium">
+                    Fund creators with USDC • Built on Base
+                  </p>
                 </div>
               </div>
-              {neynarUser && (
-                <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center border border-border">
-                  <span className="text-sm font-medium text-accent-foreground">👤</span>
-                </div>
-              )}
             </div>
           </div>
 
