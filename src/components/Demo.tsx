@@ -21,7 +21,7 @@ import TipJarDetailScreen from "~/components/screens/TipJarDetailScreen";
 import SupportScreen from "~/components/screens/SupportScreen";
 import DashboardScreen from "~/components/screens/DashboardScreen";
 
-export type Tab = "home" | "create" | "profile" | "wallet";
+export type Tab = "home" | "create" | "discover" | "profile";
 
 interface NeynarUser {
   fid: number;
@@ -223,6 +223,13 @@ export default function Demo(
             />
           )}
 
+          {activeTab === "discover" && (
+            <DiscoverScreen
+              onTipJarClick={openTipJarDetail}
+              onCreateClick={handleCreateTipJar}
+            />
+          )}
+
           {activeTab === "profile" && (
             <DashboardScreen
               onTipJarClick={openTipJarDetail}
@@ -232,120 +239,110 @@ export default function Demo(
               onViewMessages={() => alert("Messages coming soon!")}
               onEditTipJar={(id) => alert(`Edit tip jar ${id}`)}
               onShareTipJar={handleShare}
-            />
-          )}
-
-          {activeTab === "wallet" && (
-            <div className="px-4 py-6 max-w-md mx-auto">
-              {/* Wallet Header */}
-              <div className="flex items-center justify-between mb-6">
-                <h1 className="text-xl font-bold text-gray-900">💰 Wallet</h1>
-                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                  <span className="text-sm">👤</span>
-                </div>
-              </div>
-
-              {/* Connection Status */}
-              <div className="space-y-4">
-                {!isConnected ? (
-                  <div className="text-center py-8">
-                    <div className="text-4xl mb-4">🔗</div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                      Connect Your Wallet
-                    </h2>
-                    <p className="text-gray-600 mb-6">
-                      Connect your wallet to start sending and receiving tips
-                    </p>
+              walletContent={
+                <div className="space-y-4 mt-6">
+                  {/* Wallet Section in Profile */}
+                  <div className="border-t border-gray-200 pt-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">💰 Wallet</h3>
                     
-                    <div className="space-y-3">
-                      {connectors.map((connector) => (
+                    {!isConnected ? (
+                      <div className="text-center py-6">
+                        <div className="text-3xl mb-3">🔗</div>
+                        <h4 className="text-md font-semibold text-gray-900 mb-2">
+                          Connect Your Wallet
+                        </h4>
+                        <p className="text-gray-600 mb-4 text-sm">
+                          Connect to start sending and receiving tips
+                        </p>
+                        
+                        <div className="space-y-2">
+                          {connectors.slice(0, 2).map((connector) => (
+                            <Button
+                              key={connector.id}
+                              onClick={() => connect({ connector })}
+                              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm"
+                            >
+                              Connect {connector.name}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Wallet Address */}
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="text-xs text-gray-600 mb-1">Wallet Address</div>
+                          <div className="font-mono text-sm text-gray-900">
+                            {truncateAddress(address!)}
+                          </div>
+                        </div>
+
+                        {/* Balances */}
+                        <div className="space-y-2">
+                          <h4 className="font-medium text-gray-900 text-sm">Token Balances</h4>
+                          
+                          {/* USDC Balance */}
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">$</span>
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-900 text-sm">USDC</div>
+                                  <div className="text-xs text-gray-600">USD Coin</div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-gray-900 text-sm">
+                                  {usdcBalance ? parseFloat(usdcBalance.formatted).toFixed(2) : "0.00"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* ETH Balance */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">E</span>
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-900 text-sm">ETH</div>
+                                  <div className="text-xs text-gray-600">Ethereum</div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-gray-900 text-sm">
+                                  {ethBalance ? parseFloat(ethBalance.formatted).toFixed(4) : "0.0000"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Network Info */}
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="font-medium text-gray-900 text-sm">Base Network</span>
+                          </div>
+                        </div>
+
+                        {/* Disconnect Button */}
                         <Button
-                          key={connector.id}
-                          onClick={() => connect({ connector })}
-                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg"
+                          onClick={() => disconnect()}
+                          className="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm"
                         >
-                          Connect {connector.name}
+                          Disconnect Wallet
                         </Button>
-                      ))}
-                    </div>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Wallet Address */}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 mb-1">Wallet Address</div>
-                      <div className="font-mono text-sm text-gray-900">
-                        {truncateAddress(address!)}
-                      </div>
-                    </div>
-
-                    {/* Balances */}
-                    <div className="space-y-3">
-                      <h3 className="font-semibold text-gray-900">Token Balances</h3>
-                      
-                      {/* ETH Balance */}
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">ETH</span>
-                            </div>
-                            <div>
-                              <div className="font-medium text-gray-900">Ethereum</div>
-                              <div className="text-sm text-gray-600">ETH</div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-gray-900">
-                              {ethBalance ? parseFloat(ethBalance.formatted).toFixed(4) : "0.0000"}
-                            </div>
-                            <div className="text-sm text-gray-600">ETH</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* USDC Balance */}
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">$</span>
-                            </div>
-                            <div>
-                              <div className="font-medium text-gray-900">USD Coin</div>
-                              <div className="text-sm text-gray-600">USDC</div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-gray-900">
-                              {usdcBalance ? parseFloat(usdcBalance.formatted).toFixed(2) : "0.00"}
-                            </div>
-                            <div className="text-sm text-gray-600">USDC</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Network Info */}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="text-sm text-gray-600 mb-1">Network</div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                        <span className="font-medium text-gray-900">Base Network</span>
-                      </div>
-                    </div>
-
-                    {/* Disconnect Button */}
-                    <Button
-                      onClick={() => disconnect()}
-                      className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg"
-                    >
-                      Disconnect Wallet
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
+                </div>
+              }
+            />
           )}
 
           {/* Custom Footer for Social Tip Jar */}
@@ -376,6 +373,18 @@ export default function Demo(
               </button>
               
               <button
+                onClick={() => setActiveTab("discover")}
+                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                  activeTab === "discover"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                <span className="text-lg mb-1">🔍</span>
+                <span className="text-xs font-medium">Discover</span>
+              </button>
+              
+              <button
                 onClick={() => setActiveTab("profile")}
                 className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
                   activeTab === "profile"
@@ -385,18 +394,6 @@ export default function Demo(
               >
                 <span className="text-lg mb-1">👤</span>
                 <span className="text-xs font-medium">Profile</span>
-              </button>
-              
-              <button
-                onClick={() => setActiveTab("wallet")}
-                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
-                  activeTab === "wallet"
-                    ? "bg-blue-100 text-blue-600"
-                    : "text-gray-600 hover:text-gray-800"
-                }`}
-              >
-                <span className="text-lg mb-1">💰</span>
-                <span className="text-xs font-medium">Wallet</span>
               </button>
             </div>
           </div>

@@ -56,6 +56,7 @@ interface DashboardScreenProps {
   onViewMessages?: () => void;
   onEditTipJar?: (tipJarId: string) => void;
   onShareTipJar?: (tipJarId: string) => void;
+  walletContent?: React.ReactNode; // Add wallet content prop
 }
 
 export default function DashboardScreen({
@@ -65,7 +66,8 @@ export default function DashboardScreen({
   onViewAnalytics,
   onViewMessages,
   onEditTipJar,
-  onShareTipJar
+  onShareTipJar,
+  walletContent // Add wallet content prop
 }: DashboardScreenProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "tipjars">("overview");
   const { name, stats, tipJars } = mockUserData;
@@ -261,6 +263,9 @@ export default function DashboardScreen({
           )}
         </div>
       )}
+
+      {/* Render wallet content if provided */}
+      {walletContent}
     </div>
   );
 }
