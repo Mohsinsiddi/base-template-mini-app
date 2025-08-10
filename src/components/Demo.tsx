@@ -12,7 +12,6 @@ import { Button } from "~/components/ui/Button";
 import { truncateAddress } from "~/lib/truncateAddress";
 import { base } from "wagmi/chains";
 import { useMiniApp } from "@neynar/react";
-import { Header } from "~/components/ui/Header";
 
 // Import all screens
 import DiscoverScreen from "~/components/screens/DiscoverScreen";
@@ -205,7 +204,25 @@ export default function Demo(
 
         {/* Main App Content */}
         <div className={modal.isOpen ? "hidden" : ""}>
-          <Header neynarUser={neynarUser} />
+          {/* Enhanced Header */}
+          <div className="bg-gradient-to-r from-primary/5 to-primary/10 border-b border-border px-4 py-4 mb-4">
+            <div className="flex items-center justify-between max-w-md mx-auto">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-sm">
+                  <span className="text-xl">🏠</span>
+                </div>
+                <div>
+                  <h1 className="font-bold text-foreground text-lg">Social Tip Jar</h1>
+                  <p className="text-xs text-muted-foreground">Support creators with USDC</p>
+                </div>
+              </div>
+              {neynarUser && (
+                <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center border border-border">
+                  <span className="text-sm font-medium text-accent-foreground">👤</span>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Tab Content */}
           {activeTab === "home" && (
@@ -345,15 +362,15 @@ export default function Demo(
             />
           )}
 
-          {/* Custom Footer for Social Tip Jar */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
+          {/* Enhanced Custom Footer for Social Tip Jar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border px-4 py-3 shadow-lg">
             <div className="flex justify-around max-w-md mx-auto">
               <button
                 onClick={() => setActiveTab("home")}
-                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                className={`flex flex-col items-center py-3 px-4 rounded-xl transition-all duration-200 ${
                   activeTab === "home"
-                    ? "bg-blue-100 text-blue-600"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-primary text-primary-foreground shadow-md scale-105"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent active:scale-95"
                 }`}
               >
                 <span className="text-lg mb-1">🏠</span>
@@ -362,10 +379,10 @@ export default function Demo(
               
               <button
                 onClick={() => setActiveTab("create")}
-                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                className={`flex flex-col items-center py-3 px-4 rounded-xl transition-all duration-200 ${
                   activeTab === "create"
-                    ? "bg-blue-100 text-blue-600"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-primary text-primary-foreground shadow-md scale-105"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent active:scale-95"
                 }`}
               >
                 <span className="text-lg mb-1">➕</span>
@@ -374,10 +391,10 @@ export default function Demo(
               
               <button
                 onClick={() => setActiveTab("discover")}
-                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                className={`flex flex-col items-center py-3 px-4 rounded-xl transition-all duration-200 ${
                   activeTab === "discover"
-                    ? "bg-blue-100 text-blue-600"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-primary text-primary-foreground shadow-md scale-105"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent active:scale-95"
                 }`}
               >
                 <span className="text-lg mb-1">🔍</span>
@@ -386,10 +403,10 @@ export default function Demo(
               
               <button
                 onClick={() => setActiveTab("profile")}
-                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                className={`flex flex-col items-center py-3 px-4 rounded-xl transition-all duration-200 ${
                   activeTab === "profile"
-                    ? "bg-blue-100 text-blue-600"
-                    : "text-gray-600 hover:text-gray-800"
+                    ? "bg-primary text-primary-foreground shadow-md scale-105"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent active:scale-95"
                 }`}
               >
                 <span className="text-lg mb-1">👤</span>

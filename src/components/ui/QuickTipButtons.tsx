@@ -31,19 +31,19 @@ export function QuickTipButtons({
     }
   };
 
-  const buttonSize = variant === "compact" ? "px-3 py-2 text-sm" : "px-4 py-3 text-base";
+  const buttonSize = variant === "compact" ? "px-4 py-3 text-sm" : "px-5 py-4 text-base";
   
   return (
-    <div className={`space-y-3 ${className}`}>
-      <div className="grid grid-cols-4 gap-2">
+    <div className={`space-y-4 ${className}`}>
+      <div className="grid grid-cols-4 gap-3">
         {QUICK_AMOUNTS.map((amount) => (
           <button
             key={amount}
             onClick={() => onAmountSelect(amount)}
-            className={`${buttonSize} border-2 rounded-lg font-medium transition-all ${
+            className={`${buttonSize} border-2 rounded-xl font-semibold transition-all duration-200 ${
               selectedAmount === amount
-                ? "border-blue-500 bg-blue-50 text-blue-700"
-                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                ? "border-primary bg-primary text-primary-foreground shadow-lg scale-105"
+                : "border-border bg-card text-card-foreground hover:border-primary/50 hover:bg-accent active:scale-95"
             }`}
           >
             ${amount}
@@ -52,19 +52,19 @@ export function QuickTipButtons({
       </div>
 
       {showCustom && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {!showCustomInput ? (
             <button
               onClick={() => setShowCustomInput(true)}
-              className={`w-full ${buttonSize} border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:bg-gray-50 transition-all`}
+              className={`w-full ${buttonSize} border-2 border-dashed border-border rounded-xl text-muted-foreground hover:border-primary/50 hover:bg-accent transition-all duration-200`}
             >
               Custom Amount
             </button>
           ) : (
-            <div className="space-y-2">
-              <div className="flex gap-2">
+            <div className="space-y-3">
+              <div className="flex gap-3">
                 <div className="flex-1 relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground font-medium">
                     $
                   </span>
                   <input
@@ -74,16 +74,16 @@ export function QuickTipButtons({
                     placeholder="0.00"
                     min="0"
                     step="0.01"
-                    className="w-full pl-8 pr-16 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full pl-10 pr-20 py-3 border border-border rounded-xl bg-card text-card-foreground focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200"
                   />
-                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">
+                  <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground text-sm font-medium">
                     {currency}
                   </span>
                 </div>
                 <button
                   onClick={handleCustomSubmit}
                   disabled={!customAmount || parseFloat(customAmount) <= 0}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  className="px-6 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transition-all duration-200 font-medium"
                 >
                   Set
                 </button>
@@ -93,7 +93,7 @@ export function QuickTipButtons({
                   setShowCustomInput(false);
                   setCustomAmount("");
                 }}
-                className="text-sm text-gray-500 hover:text-gray-700"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>
@@ -103,8 +103,8 @@ export function QuickTipButtons({
       )}
 
       {selectedAmount && (
-        <div className="text-center text-sm text-gray-600 bg-gray-50 py-2 rounded-lg">
-          Selected: <span className="font-medium">${selectedAmount} {currency}</span>
+        <div className="text-center text-sm text-muted-foreground bg-accent/50 py-3 rounded-xl border border-border">
+          Selected: <span className="font-semibold text-foreground">${selectedAmount} {currency}</span>
         </div>
       )}
     </div>

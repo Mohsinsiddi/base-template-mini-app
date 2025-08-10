@@ -23,15 +23,15 @@ export function CategoryFilter({
   showEmojis = false,
   className = ""
 }: CategoryFilterProps) {
-  const baseButtonClass = "whitespace-nowrap transition-colors font-medium";
+  const baseButtonClass = "whitespace-nowrap transition-all duration-200 font-medium border";
   
-  const pillClass = `${baseButtonClass} px-4 py-2 rounded-full text-sm`;
-  const chipClass = `${baseButtonClass} px-3 py-1 rounded-lg text-xs`;
+  const pillClass = `${baseButtonClass} px-5 py-2.5 rounded-full text-sm`;
+  const chipClass = `${baseButtonClass} px-4 py-2 rounded-lg text-xs`;
   
   const buttonClass = variant === "pills" ? pillClass : chipClass;
   
   return (
-    <div className={`flex gap-2 overflow-x-auto pb-2 scrollbar-hide ${className}`}>
+    <div className={`flex gap-3 overflow-x-auto pb-2 scrollbar-hide ${className}`}>
       {CATEGORIES.map((category) => {
         const isSelected = selectedCategory === category.id;
         
@@ -41,12 +41,12 @@ export function CategoryFilter({
             onClick={() => onCategoryChange(category.id)}
             className={`${buttonClass} ${
               isSelected
-                ? "bg-blue-500 text-white shadow-sm"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300"
+                ? "bg-primary text-primary-foreground border-primary shadow-md"
+                : "bg-card text-card-foreground border-border hover:bg-accent hover:border-primary/50 active:scale-95"
             }`}
           >
             {showEmojis && (
-              <span className="mr-1">{category.emoji}</span>
+              <span className="mr-2">{category.emoji}</span>
             )}
             {category.name}
           </button>

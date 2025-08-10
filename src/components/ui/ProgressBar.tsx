@@ -18,14 +18,14 @@ export function ProgressBar({
   if (variant === "smooth") {
     return (
       <div className={`w-full ${className}`}>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className="w-full bg-secondary rounded-full h-3 overflow-hidden">
           <div 
-            className="bg-green-500 h-2 rounded-full transition-all duration-300 ease-out"
+            className="bg-gradient-to-r from-primary to-primary/80 h-3 rounded-full transition-all duration-500 ease-out shadow-sm"
             style={{ width: `${percentage}%` }}
           />
         </div>
         {showPercentage && (
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-muted-foreground mt-2 font-medium">
             {Math.round(percentage)}% funded
           </div>
         )}
@@ -38,18 +38,20 @@ export function ProgressBar({
   
   return (
     <div className={`${className}`}>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         {Array.from({ length: 10 }, (_, i) => (
           <div
             key={i}
-            className={`w-3 h-2 rounded-sm transition-colors duration-200 ${
-              i < filledBlocks ? "bg-green-500" : "bg-gray-200"
+            className={`w-4 h-2.5 rounded-sm transition-all duration-300 ${
+              i < filledBlocks 
+                ? "bg-gradient-to-r from-primary to-primary/80 shadow-sm" 
+                : "bg-secondary"
             }`}
           />
         ))}
       </div>
       {showPercentage && (
-        <div className="text-xs text-gray-500 mt-1">
+        <div className="text-xs text-muted-foreground mt-2 font-medium">
           {Math.round(percentage)}% funded
         </div>
       )}
