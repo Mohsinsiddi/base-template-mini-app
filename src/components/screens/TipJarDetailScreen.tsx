@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ProgressBar } from "~/components/ui/ProgressBar";
 import { QuickTipButtons } from "~/components/ui/QuickTipButtons";
 import { Button } from "~/components/ui/Button";
+import { tipAPI, type TipRecord } from "~/lib/supabase";
 import { type TipJar } from "~/components/ui/TipJarCard";
 
 interface Supporter {
@@ -14,53 +15,21 @@ interface Supporter {
   timestamp: string;
 }
 
-// Mock data for a specific tip jar
-const mockTipJarDetail: TipJar & { 
-  description: string;
-  supporters: Supporter[];
-} = {
+// Mock base tip jar data (you'd fetch this from your main tips table)
+const mockTipJarBase: TipJar = {
   id: "1",
   title: "Coffee for my startup",
   creator: "@alice_builds",
-  currentAmount: 127,
+  currentAmount: 0, // This will be calculated from actual tips
   targetAmount: 200,
-  supporterCount: 12,
+  supporterCount: 0, // This will be calculated from actual tips
   category: "tech",
   emoji: "☕",
   daysLeft: 3,
   coverImage: undefined,
-  description: "I'm building an app that helps people track their daily habits and build positive routines. Your support will help me focus on development and get this to market faster!",
-  supporters: [
-    {
-      id: "1",
-      username: "@bob",
-      amount: 5,
-      message: "Love this idea!",
-      timestamp: "2 hours ago"
-    },
-    {
-      id: "2", 
-      username: "@charlie",
-      amount: 10,
-      message: "Good luck with your app!",
-      timestamp: "5 hours ago"
-    },
-    {
-      id: "3",
-      username: "@diana",
-      amount: 25,
-      message: "Can't wait to try it out! 🚀",
-      timestamp: "1 day ago"
-    },
-    {
-      id: "4",
-      username: "@eve",
-      amount: 15,
-      message: "",
-      timestamp: "2 days ago"
-    }
-  ]
 };
+
+const mockDescription = "I'm building an app that helps people track their daily habits and build positive routines. Your support will help me focus on development and get this to market faster!";
 
 interface TipJarDetailScreenProps {
   tipJarId: string;
@@ -89,28 +58,151 @@ export default function TipJarDetailScreen({
   const [message, setMessage] = useState("");
   const [showName, setShowName] = useState(true);
   
-  // In real app, fetch tip jar details by tipJarId
-  const tipJar = mockTipJarDetail;
-  
-  const percentage = Math.round((tipJar.currentAmount / tipJar.targetAmount) * 100);
-  const displayedSupporters = showAllSupporters ? tipJar.supporters : tipJar.supporters.slice(0, 4);
+  // Backend state
+  const [tipJar, setTipJar] = useState(mockTipJarBase);
+  const [supporters, setSupporters] = useState<Supporter[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSendTip = () => {
+  // Load tips data from backend
+  useEffect(() => {
+    loadTipsData();
+  }, [tipJarId]);
+
+  const loadTipsData = async () => {
+    try {
+      setLoading(true);
+      
+      // Get tips and stats for this tip jar
+      const [tips, stats] = await Promise.all([
+        tipAPI.getTipsForJar(tipJarId),
+        tipAPI.getTipStats(tipJarId)
+      ]);
+
+      // Convert tips to supporters format
+      const supportersData = tips.map(tip => ({
+        id: tip.id!,
+        username: tip.show_name && tip.supporter_username ? tip.supporter_username : "Anonymous",
+        amount: Number(tip.amount),
+        message: tip.message,
+        timestamp: formatTimestamp(tip.created_at!)
+      }));
+
+      setSupporters(supportersData);
+      
+      // Update tip jar with real data
+      setTipJar(prev => ({
+        ...prev,
+        currentAmount: stats.totalAmount,
+        supporterCount: stats.supporterCount
+      }));
+
+    } catch (err) {
+      console.error('Error loading tips data:', err);
+      setError('Failed to load tips data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffHours < 1) return "Just now";
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return "1 day ago";
+    return `${diffDays} days ago`;
+  };
+
+  const handleSendTip = async () => {
     if (!selectedAmount || !onSendTip) {
       console.log("TipJarDetail: Missing amount or onSendTip handler");
       return;
     }
 
-    const tipData = {
-      tipJarId,
-      amount: selectedAmount,
-      message: message.trim() || undefined,
-      showName
-    };
+    try {
+      // First record the tip in the database
+      const tipRecord = await tipAPI.recordTip({
+        tip_jar_id: tipJarId,
+        amount: selectedAmount,
+        message: message.trim() || undefined,
+        supporter_username: showName ? "Current User" : undefined, // Replace with actual username
+        show_name: showName,
+        status: 'pending'
+      });
 
-    console.log("TipJarDetail: Sending tip data:", tipData);
-    onSendTip(tipData);
+      console.log("Tip recorded in database:", tipRecord);
+
+      // Then trigger the blockchain transaction
+      const tipData = {
+        tipJarId,
+        amount: selectedAmount,
+        message: message.trim() || undefined,
+        showName,
+        dbTipId: tipRecord.id // Pass the database ID for status updates
+      };
+
+      console.log("TipJarDetail: Sending tip data:", tipData);
+      onSendTip(tipData);
+
+    } catch (err) {
+      console.error("Error recording tip:", err);
+      setError("Failed to process tip. Please try again.");
+    }
   };
+
+  // Function to update tip status after blockchain confirmation
+  const updateTipStatus = async (dbTipId: string, status: 'confirmed' | 'failed', txHash?: string) => {
+    try {
+      await tipAPI.updateTipStatus(dbTipId, status, txHash);
+      
+      // Reload data to show updated stats
+      await loadTipsData();
+      
+      // Reset form
+      setSelectedAmount(undefined);
+      setMessage("");
+    } catch (err) {
+      console.error("Error updating tip status:", err);
+    }
+  };
+
+  // Expose this function for parent component to call after blockchain confirmation
+  useEffect(() => {
+    // You can pass this function up to parent or store it globally
+    (window as any).updateTipStatus = updateTipStatus;
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="px-4 py-6 max-w-md mx-auto min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading tip jar...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="px-4 py-6 max-w-md mx-auto min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <Button onClick={loadTipsData} className="px-4 py-2">
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  const percentage = Math.round((tipJar.currentAmount / tipJar.targetAmount) * 100);
+  const displayedSupporters = showAllSupporters ? supporters : supporters.slice(0, 4);
 
   const getButtonText = () => {
     if (isProcessing) return "Processing...";
@@ -138,8 +230,11 @@ export default function TipJarDetailScreen({
             <span>📤</span>
             <span className="font-medium">Share</span>
           </button>
-          <button className="w-10 h-10 bg-accent hover:bg-accent/80 rounded-xl flex items-center justify-center border border-border transition-all duration-200">
-            <span className="text-sm">•••</span>
+          <button 
+            onClick={loadTipsData}
+            className="w-10 h-10 bg-accent hover:bg-accent/80 rounded-xl flex items-center justify-center border border-border transition-all duration-200"
+          >
+            <span className="text-sm">🔄</span>
           </button>
         </div>
       </div>
@@ -173,7 +268,7 @@ export default function TipJarDetailScreen({
           <div className="flex justify-between items-center mb-4">
             <div>
               <span className="text-2xl font-bold text-foreground">
-                ${tipJar.currentAmount}
+                ${tipJar.currentAmount.toFixed(2)}
               </span>
               <span className="text-lg text-muted-foreground"> / ${tipJar.targetAmount} USDC</span>
             </div>
@@ -205,7 +300,7 @@ export default function TipJarDetailScreen({
             📖 <span>About this project</span>
           </h3>
           <p className="text-foreground leading-relaxed">
-            {tipJar.description}
+            {mockDescription}
           </p>
         </div>
 
@@ -274,29 +369,6 @@ export default function TipJarDetailScreen({
           </div>
         </div>
 
-        {/* Transaction Summary */}
-        {selectedAmount && (
-          <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-2xl p-6">
-            <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
-              📊 <span>Transaction Summary</span>
-            </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Tip Amount:</span>
-                <span className="font-semibold text-foreground">${selectedAmount.toFixed(2)} USDC</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Network:</span>
-                <span className="text-foreground">Base</span>
-              </div>
-              <div className="border-t border-primary/20 pt-3 flex justify-between items-center">
-                <span className="font-bold text-foreground">You Send:</span>
-                <span className="font-bold text-foreground text-lg">${selectedAmount.toFixed(2)} USDC</span>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Enhanced Send Button */}
         <Button
           onClick={handleSendTip}
@@ -307,64 +379,45 @@ export default function TipJarDetailScreen({
           {getButtonText()}
         </Button>
 
-        {/* Enhanced Preview */}
-        {selectedAmount && isConnected && (
-          <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
-            <h4 className="text-sm font-bold text-blue-700 mb-3 flex items-center gap-2">
-              👁️ <span>Preview</span>
-            </h4>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-blue-800">
-                <div className="w-6 h-6 bg-blue-500/20 rounded-full flex items-center justify-center">
-                  <span className="text-xs">{showName ? "👤" : "🔒"}</span>
-                </div>
-                <span className="font-medium">
-                  {showName ? "You" : "Anonymous"}
-                </span>
-                <span>will tip</span>
-                <span className="font-bold text-blue-900">${selectedAmount} USDC</span>
-              </div>
-              {message && (
-                <div className="mt-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                  <div className="text-sm text-blue-800 italic">"{message}"</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Enhanced Recent Support */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-foreground flex items-center gap-2">
-              💬 <span>Recent Support ({tipJar.supporters.length})</span>
+              💬 <span>Recent Support ({supporters.length})</span>
             </h3>
           </div>
           
-          <div className="space-y-4">
-            {displayedSupporters.map((supporter) => (
-              <div key={supporter.id} className="bg-accent/30 rounded-xl p-4 border border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-foreground">{supporter.username}</span>
-                  <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">
-                    {supporter.timestamp}
-                  </span>
+          {supporters.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <span className="text-3xl block mb-2">🌟</span>
+              <p>Be the first to support this project!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {displayedSupporters.map((supporter) => (
+                <div key={supporter.id} className="bg-accent/30 rounded-xl p-4 border border-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-foreground">{supporter.username}</span>
+                    <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">
+                      {supporter.timestamp}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-green-600 bg-green-500/10 px-3 py-1 rounded-full">
+                      +${supporter.amount} USDC
+                    </span>
+                  </div>
+                  {supporter.message && (
+                    <p className="text-sm text-muted-foreground mt-3 italic bg-card p-3 rounded-lg border border-border">
+                      "{supporter.message}"
+                    </p>
+                  )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-green-600 bg-green-500/10 px-3 py-1 rounded-full">
-                    +${supporter.amount} USDC
-                  </span>
-                </div>
-                {supporter.message && (
-                  <p className="text-sm text-muted-foreground mt-3 italic bg-card p-3 rounded-lg border border-border">
-                    "{supporter.message}"
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          {tipJar.supporters.length > 4 && (
+          {supporters.length > 4 && (
             <button
               onClick={() => setShowAllSupporters(!showAllSupporters)}
               className="w-full mt-4 py-3 text-sm text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/20 font-semibold rounded-xl transition-all duration-200"
@@ -377,7 +430,7 @@ export default function TipJarDetailScreen({
         {/* Enhanced Stats Grid */}
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center bg-gradient-to-r from-green-500/10 to-green-600/10 p-4 rounded-xl border border-green-500/20">
-            <div className="text-2xl font-bold text-green-600">${tipJar.currentAmount}</div>
+            <div className="text-2xl font-bold text-green-600">${tipJar.currentAmount.toFixed(2)}</div>
             <div className="text-xs text-green-600/80 font-medium">Raised</div>
           </div>
           <div className="text-center bg-gradient-to-r from-blue-500/10 to-blue-600/10 p-4 rounded-xl border border-blue-500/20">
