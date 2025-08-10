@@ -19,6 +19,7 @@ import CreateTipJarScreen from "~/components/screens/CreateTipJarScreen";
 import TipJarDetailScreen from "~/components/screens/TipJarDetailScreen";
 import SupportScreen from "~/components/screens/SupportScreen";
 import DashboardScreen from "~/components/screens/DashboardScreen";
+import HomeScreen from "~/components/screens/HomeScreen";
 
 export type Tab = "home" | "create" | "discover" | "profile";
 
@@ -226,9 +227,11 @@ export default function Demo(
 
           {/* Tab Content */}
           {activeTab === "home" && (
-            <DiscoverScreen
+            <HomeScreen
               onTipJarClick={openTipJarDetail}
               onCreateClick={handleCreateTipJar}
+              onDiscoverClick={() => setActiveTab("discover")}
+              onViewAllFeatured={() => setActiveTab("discover")}
             />
           )}
 

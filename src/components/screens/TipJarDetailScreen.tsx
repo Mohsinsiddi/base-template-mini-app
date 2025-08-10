@@ -91,118 +91,141 @@ export default function TipJarDetailScreen({
   };
 
   return (
-    <div className="px-4 py-6 max-w-md mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="px-4 py-6 max-w-md mx-auto min-h-screen bg-background">
+      {/* Enhanced Header */}
+      <div className="flex items-center justify-between mb-6">
         <button 
           onClick={onBack}
-          className="text-blue-500 hover:text-blue-600 font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/80 rounded-xl border border-border transition-all duration-200"
         >
-          ← Back
+          <span className="text-lg">←</span>
+          <span className="font-medium text-foreground">Back</span>
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => onShare?.(tipJarId)}
-            className="px-3 py-1 text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/20 rounded-xl transition-all duration-200"
           >
-            Share 📤
+            <span>📤</span>
+            <span className="font-medium">Share</span>
           </button>
-          <button className="text-gray-400 hover:text-gray-600">
-            •••
+          <button className="w-10 h-10 bg-accent hover:bg-accent/80 rounded-xl flex items-center justify-center border border-border transition-all duration-200">
+            <span className="text-sm">•••</span>
           </button>
         </div>
       </div>
 
-      <div className="space-y-6">
-        {/* Cover Image */}
-        <div className="w-full h-40 bg-gray-100 rounded-lg flex items-center justify-center">
+      <div className="space-y-8">
+        {/* Enhanced Cover Image */}
+        <div className="w-full h-48 bg-gradient-to-br from-primary/10 to-primary/20 rounded-2xl flex items-center justify-center border border-primary/20 shadow-sm">
           {tipJar.coverImage ? (
             <img 
               src={tipJar.coverImage} 
               alt={tipJar.title}
-              className="w-full h-full object-cover rounded-lg"
+              className="w-full h-full object-cover rounded-2xl"
             />
           ) : (
-            <span className="text-4xl">{tipJar.emoji}</span>
+            <span className="text-5xl">{tipJar.emoji}</span>
           )}
         </div>
 
-        {/* Title and Creator */}
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 mb-1">
+        {/* Enhanced Title and Creator */}
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground mb-2">
             {tipJar.emoji} {tipJar.title}
           </h1>
-          <p className="text-gray-600">by {tipJar.creator}</p>
+          <p className="text-muted-foreground bg-accent/30 px-4 py-2 rounded-full inline-block">
+            by {tipJar.creator}
+          </p>
         </div>
 
-        {/* Progress */}
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-lg font-semibold text-gray-900">
-              ${tipJar.currentAmount} / ${tipJar.targetAmount} USDC ({percentage}%)
-            </span>
+        {/* Enhanced Progress Section */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <span className="text-2xl font-bold text-foreground">
+                ${tipJar.currentAmount}
+              </span>
+              <span className="text-lg text-muted-foreground"> / ${tipJar.targetAmount} USDC</span>
+            </div>
+            <div className="bg-primary/10 px-3 py-1 rounded-full">
+              <span className="text-primary font-semibold text-sm">{percentage}%</span>
+            </div>
           </div>
           <ProgressBar 
             current={tipJar.currentAmount}
             target={tipJar.targetAmount}
             variant="smooth"
-            className="mb-3"
+            className="mb-4"
           />
-          <div className="flex items-center justify-between text-sm text-gray-600">
-            <span>🎯 {tipJar.supporterCount} supporters</span>
+          <div className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2 text-muted-foreground">
+              🎯 <span className="font-medium text-foreground">{tipJar.supporterCount} supporters</span>
+            </span>
             {tipJar.daysLeft && (
-              <span>{tipJar.daysLeft} days left</span>
+              <span className="bg-accent px-3 py-1 rounded-full text-muted-foreground font-medium">
+                {tipJar.daysLeft} days left
+              </span>
             )}
           </div>
         </div>
 
-        {/* Description */}
-        <div className="p-4 bg-gray-50 rounded-lg">
-          <p className="text-gray-700 leading-relaxed">
+        {/* Enhanced Description */}
+        <div className="bg-gradient-to-r from-accent/30 to-accent/10 rounded-2xl p-6 border border-border">
+          <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+            📖 <span>About this project</span>
+          </h3>
+          <p className="text-foreground leading-relaxed">
             {tipJar.description}
           </p>
         </div>
 
-        {/* Quick Tip Section */}
-        <div>
-          <h3 className="font-semibold text-gray-900 mb-3">Quick Tip Amounts:</h3>
+        {/* Enhanced Quick Tip Section */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
+            💰 <span>Quick Tip Amounts</span>
+          </h3>
           <QuickTipButtons
             onAmountSelect={setSelectedAmount}
             selectedAmount={selectedAmount}
           />
         </div>
 
-        {/* Support Button */}
+        {/* Enhanced Support Button */}
         <Button
           onClick={handleSupport}
           disabled={!selectedAmount}
-          className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-medium disabled:bg-gray-300"
+          className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-4 rounded-2xl font-bold text-lg shadow-lg disabled:from-muted disabled:to-muted disabled:text-muted-foreground transition-all duration-200"
         >
-          💰 Support This Goal
+          {selectedAmount ? `💰 Support with ${selectedAmount}` : "💰 Select Amount to Support"}
         </Button>
 
-        {/* Recent Support */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-900">
-              💬 Recent Support ({tipJar.supporters.length})
+        {/* Enhanced Recent Support */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-foreground flex items-center gap-2">
+              💬 <span>Recent Support ({tipJar.supporters.length})</span>
             </h3>
           </div>
           
-          <div className="space-y-3">
+          <div className="space-y-4">
             {displayedSupporters.map((supporter) => (
-              <div key={supporter.id} className="p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-900">{supporter.username}</span>
-                  <span className="text-sm text-gray-500">{supporter.timestamp}</span>
+              <div key={supporter.id} className="bg-accent/30 rounded-xl p-4 border border-border">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-semibold text-foreground">{supporter.username}</span>
+                  <span className="text-xs text-muted-foreground bg-accent px-2 py-1 rounded-full">
+                    {supporter.timestamp}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-green-600 font-medium">
+                  <span className="text-sm font-bold text-green-600 bg-green-500/10 px-3 py-1 rounded-full">
                     +${supporter.amount} USDC
                   </span>
                 </div>
                 {supporter.message && (
-                  <p className="text-sm text-gray-600 mt-1">"{supporter.message}"</p>
+                  <p className="text-sm text-muted-foreground mt-3 italic bg-card p-3 rounded-lg border border-border">
+                    "{supporter.message}"
+                  </p>
                 )}
               </div>
             ))}
@@ -211,29 +234,32 @@ export default function TipJarDetailScreen({
           {tipJar.supporters.length > 4 && (
             <button
               onClick={() => setShowAllSupporters(!showAllSupporters)}
-              className="w-full mt-3 py-2 text-sm text-blue-500 hover:text-blue-600 font-medium"
+              className="w-full mt-4 py-3 text-sm text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/20 font-semibold rounded-xl transition-all duration-200"
             >
               {showAllSupporters ? "Show Less" : "View All Messages"}
             </button>
           )}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">${tipJar.currentAmount}</div>
-            <div className="text-xs text-gray-500">Raised</div>
+        {/* Enhanced Stats Grid */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="text-center bg-gradient-to-r from-green-500/10 to-green-600/10 p-4 rounded-xl border border-green-500/20">
+            <div className="text-2xl font-bold text-green-600">${tipJar.currentAmount}</div>
+            <div className="text-xs text-green-600/80 font-medium">Raised</div>
           </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{tipJar.supporterCount}</div>
-            <div className="text-xs text-gray-500">Supporters</div>
+          <div className="text-center bg-gradient-to-r from-blue-500/10 to-blue-600/10 p-4 rounded-xl border border-blue-500/20">
+            <div className="text-2xl font-bold text-blue-600">{tipJar.supporterCount}</div>
+            <div className="text-xs text-blue-600/80 font-medium">Supporters</div>
           </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-gray-900">{tipJar.daysLeft || "∞"}</div>
-            <div className="text-xs text-gray-500">Days Left</div>
+          <div className="text-center bg-gradient-to-r from-orange-500/10 to-orange-600/10 p-4 rounded-xl border border-orange-500/20">
+            <div className="text-2xl font-bold text-orange-600">{tipJar.daysLeft || "∞"}</div>
+            <div className="text-xs text-orange-600/80 font-medium">Days Left</div>
           </div>
         </div>
       </div>
+
+      {/* Bottom spacing */}
+      <div className="mb-20"></div>
     </div>
   );
 }
