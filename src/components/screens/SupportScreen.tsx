@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QuickTipButtons } from "~/components/ui/QuickTipButtons";
 import { Button } from "~/components/ui/Button";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
@@ -47,7 +47,7 @@ export default function SupportScreen({
   const [selectedAmount, setSelectedAmount] = useState<number | undefined>();
   const [message, setMessage] = useState("");
   const [showName, setShowName] = useState(true);
-  const [isRecording, setIsRecording] = useState(false);
+  const [hasNotifiedSuccess, setHasNotifiedSuccess] = useState(false);
 
   const { writeContract, data: txHash, error, isPending } = useWriteContract();
   
@@ -55,7 +55,24 @@ export default function SupportScreen({
     hash: txHash,
   });
 
-  const isProcessing = isPending || isConfirming || isRecording;
+  const isProcessing = isPending || isConfirming;
+
+  // Handle successful transaction - notify parent when confirmed
+  useEffect(() => {
+    if (isConfirmed && txHash && selectedAmount && !hasNotifiedSuccess) {
+      console.log("✅ Transaction confirmed, notifying parent");
+      setHasNotifiedSuccess(true);
+      
+      // Notify parent component with transaction details
+      onTipSuccess?.({
+        tipJarId,
+        amount: selectedAmount,
+        message: message.trim() || undefined,
+        showName,
+        txHash
+      });
+    }
+  }, [isConfirmed, txHash, selectedAmount, hasNotifiedSuccess, onTipSuccess, tipJarId, message, showName]);
 
   const handleSendTip = async () => {
     if (!selectedAmount) return;
@@ -77,54 +94,9 @@ export default function SupportScreen({
     }
   };
 
-  // Handle successful transaction
-  const handleTransactionSuccess = async () => {
-    if (!isConfirmed || !txHash || !selectedAmount) return;
-    
-    setIsRecording(true);
-    
-    try {
-      // Record tip in database (optional for demo)
-      await fetch('/api/tips', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tipJarId,
-          amount: selectedAmount,
-          message: message.trim() || undefined,
-          isAnonymous: !showName,
-          txHash,
-          recipientAddress: DEMO_RECIPIENT_ADDRESS,
-          createdAt: new Date().toISOString()
-        })
-      });
-
-      // Notify parent component
-      onTipSuccess?.({
-        tipJarId,
-        amount: selectedAmount,
-        message: message.trim() || undefined,
-        showName,
-        txHash
-      });
-
-    } catch (error) {
-      console.error("Failed to record tip:", error);
-      // Transaction succeeded even if recording failed
-    } finally {
-      setIsRecording(false);
-    }
-  };
-
-  // Auto-handle success
-  if (isConfirmed && txHash && !isRecording) {
-    handleTransactionSuccess();
-  }
-
   const getButtonText = () => {
     if (isPending) return "Confirming Transaction...";
     if (isConfirming) return "Processing on Base...";
-    if (isRecording) return "Recording Tip...";
     if (isConfirmed) return "✅ Tip Sent Successfully!";
     if (selectedAmount) return `💳 Send $${selectedAmount} USDC`;
     return "💳 Select Amount to Continue";
@@ -168,10 +140,10 @@ export default function SupportScreen({
                 Sending ${selectedAmount} USDC
                 {isConfirmed && <span className="text-xs opacity-60">✓</span>}
               </div>
-              <div className={`flex items-center gap-2 text-sm ${isRecording ? 'text-primary' : !isConfirmed ? 'text-muted-foreground' : 'text-green-600'}`}>
+              <div className={`flex items-center gap-2 text-sm ${isConfirming ? 'text-primary' : !isConfirmed ? 'text-muted-foreground' : 'text-green-600'}`}>
                 <span className="w-2 h-2 rounded-full bg-current"></span>
-                Recording transaction
-                {!isRecording && isConfirmed && <span className="text-xs opacity-60">✓</span>}
+                Confirming on Base blockchain
+                {isConfirmed && <span className="text-xs opacity-60">✓</span>}
               </div>
             </div>
 
@@ -293,6 +265,18 @@ export default function SupportScreen({
           {getButtonText()}
         </Button>
 
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 text-red-800 mb-2">
+              <span className="text-lg">⚠️</span>
+              <span className="font-semibold">Transaction Failed</span>
+            </div>
+            <p className="text-sm text-red-700">
+              {error.message || "Something went wrong. Please try again."}
+            </p>
+          </div>
+        )}
 
         {/* Enhanced Security Note */}
         <div className="text-center">
