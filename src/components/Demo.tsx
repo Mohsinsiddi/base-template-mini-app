@@ -1,58 +1,79 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   useAccount,
-  useSendTransaction,
-  useSignMessage,
-  useSignTypedData,
-  useWaitForTransactionReceipt,
   useDisconnect,
   useConnect,
-  useSwitchChain,
-  useChainId,
+  useBalance
 } from "wagmi";
 
-import { ShareButton } from "./ui/Share";
-
-import { config } from "~/components/providers/WagmiProvider";
 import { Button } from "~/components/ui/Button";
 import { truncateAddress } from "~/lib/truncateAddress";
-import { base, degen, mainnet, optimism, unichain } from "wagmi/chains";
-import { BaseError, UserRejectedRequestError } from "viem";
+import { base } from "wagmi/chains";
 import { useMiniApp } from "@neynar/react";
 import { Header } from "~/components/ui/Header";
-import { Footer } from "~/components/ui/Footer";
-import { USE_WALLET, APP_NAME } from "~/lib/constants";
 
-export type Tab = "home" | "actions" | "context" | "wallet";
+// Import all screens
+import DiscoverScreen from "~/components/screens/DiscoverScreen";
+import CreateTipJarScreen from "~/components/screens/CreateTipJarScreen";
+import TipJarDetailScreen from "~/components/screens/TipJarDetailScreen";
+import SupportScreen from "~/components/screens/SupportScreen";
+import DashboardScreen from "~/components/screens/DashboardScreen";
+
+export type Tab = "home" | "create" | "profile" | "wallet";
 
 interface NeynarUser {
   fid: number;
   score: number;
 }
 
+interface ModalState {
+  isOpen: boolean;
+  screen: "tipjar-detail" | "support" | null;
+  data?: any;
+}
+
+// USDC contract address on Base
+const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
 export default function Demo(
-  { title }: { title?: string } = { title: "Frames v2 Demo" }
+  { title }: { title?: string } = { title: "Social Tip Jar" }
 ) {
-  const { isSDKLoaded, context, added, notificationDetails, actions } =
-    useMiniApp();
+  const { isSDKLoaded, context } = useMiniApp();
   const [activeTab, setActiveTab] = useState<Tab>("home");
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [sendNotificationResult, setSendNotificationResult] = useState("");
-  const [copied, setCopied] = useState(false);
   const [neynarUser, setNeynarUser] = useState<NeynarUser | null>(null);
+  
+  // Modal state for overlay screens
+  const [modal, setModal] = useState<ModalState>({
+    isOpen: false,
+    screen: null,
+    data: null
+  });
 
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { disconnect } = useDisconnect();
+  const { connect, connectors } = useConnect();
+
+  // Get ETH balance
+  const { data: ethBalance } = useBalance({
+    address: address,
+    chainId: base.id,
+  });
+
+  // Get USDC balance
+  const { data: usdcBalance } = useBalance({
+    address: address,
+    token: USDC_ADDRESS,
+    chainId: base.id,
+  });
 
   useEffect(() => {
     console.log("isSDKLoaded", isSDKLoaded);
     console.log("context", context);
     console.log("address", address);
     console.log("isConnected", isConnected);
-    console.log("chainId", chainId);
-  }, [context, address, isConnected, chainId, isSDKLoaded]);
+  }, [context, address, isConnected, isSDKLoaded]);
 
   // Fetch Neynar user object when context is available
   useEffect(() => {
@@ -73,119 +94,69 @@ export default function Demo(
     fetchNeynarUserObject();
   }, [context?.user?.fid]);
 
-  const {
-    sendTransaction,
-    error: sendTxError,
-    isError: isSendTxError,
-    isPending: isSendTxPending,
-  } = useSendTransaction();
-
-  const { isLoading: isConfirming, isSuccess: isConfirmed } =
-    useWaitForTransactionReceipt({
-      hash: txHash as `0x${string}`,
+  // Navigation Handlers
+  const openTipJarDetail = useCallback((tipJarId: string) => {
+    setModal({
+      isOpen: true,
+      screen: "tipjar-detail",
+      data: { tipJarId }
     });
+  }, []);
 
-  const {
-    signTypedData,
-    error: signTypedError,
-    isError: isSignTypedError,
-    isPending: isSignTypedPending,
-  } = useSignTypedData();
-
-  const { disconnect } = useDisconnect();
-  const { connect, connectors } = useConnect();
-
-  const {
-    switchChain,
-    error: switchChainError,
-    isError: isSwitchChainError,
-    isPending: isSwitchChainPending,
-  } = useSwitchChain();
-
-  const nextChain = useMemo(() => {
-    if (chainId === base.id) {
-      return optimism;
-    } else if (chainId === optimism.id) {
-      return degen;
-    } else if (chainId === degen.id) {
-      return mainnet;
-    } else if (chainId === mainnet.id) {
-      return unichain;
-    } else {
-      return base;
-    }
-  }, [chainId]);
-
-  const handleSwitchChain = useCallback(() => {
-    switchChain({ chainId: nextChain.id });
-  }, [switchChain, nextChain.id]);
-
-  const sendNotification = useCallback(async () => {
-    setSendNotificationResult("");
-    if (!notificationDetails || !context) {
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/send-notification", {
-        method: "POST",
-        mode: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fid: context.user.fid,
-          notificationDetails,
-        }),
-      });
-
-      if (response.status === 200) {
-        setSendNotificationResult("Success");
-        return;
-      } else if (response.status === 429) {
-        setSendNotificationResult("Rate limited");
-        return;
-      }
-
-      const data = await response.text();
-      setSendNotificationResult(`Error: ${data}`);
-    } catch (error) {
-      setSendNotificationResult(`Error: ${error}`);
-    }
-  }, [context, notificationDetails]);
-
-  const sendTx = useCallback(() => {
-    sendTransaction(
-      {
-        // call yoink() on Yoink contract
-        to: "0x4bBFD120d9f352A0BEd7a014bd67913a2007a878",
-        data: "0x9846cd9efc000023c0",
-      },
-      {
-        onSuccess: (hash) => {
-          setTxHash(hash);
-        },
-      }
-    );
-  }, [sendTransaction]);
-
-  const signTyped = useCallback(() => {
-    signTypedData({
-      domain: {
-        name: APP_NAME,
-        version: "1",
-        chainId,
-      },
-      types: {
-        Message: [{ name: "content", type: "string" }],
-      },
-      message: {
-        content: `Hello from ${APP_NAME}!`,
-      },
-      primaryType: "Message",
+  const openSupportScreen = useCallback((tipJarId: string, tipJarTitle: string) => {
+    setModal({
+      isOpen: true,
+      screen: "support", 
+      data: { tipJarId, tipJarTitle }
     });
-  }, [chainId, signTypedData]);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setModal({ isOpen: false, screen: null, data: null });
+  }, []);
+
+  // Action Handlers
+  const handleCreateTipJar = useCallback(() => {
+    setActiveTab("create");
+  }, []);
+
+  const handleSaveTipJar = useCallback((formData: any) => {
+    console.log("Creating tip jar:", formData);
+    // TODO: Implement actual tip jar creation
+    alert("Tip jar created successfully!");
+    setActiveTab("home");
+  }, []);
+
+  const handleSendTip = useCallback((tipData: any) => {
+    console.log("Sending tip:", tipData);
+    // TODO: Implement actual tip sending
+    alert(`Tip of $${tipData.amount} sent successfully!`);
+    closeModal();
+  }, [closeModal]);
+
+  const handleWithdraw = useCallback(() => {
+    console.log("Withdrawing funds...");
+    // TODO: Implement withdrawal
+    alert("Withdrawal initiated!");
+  }, []);
+
+  const handleShare = useCallback((tipJarId: string) => {
+    console.log("Sharing tip jar:", tipJarId);
+    // TODO: Implement sharing
+    const shareUrl = `${process.env.NEXT_PUBLIC_URL}/tipjar/${tipJarId}`;
+    navigator.clipboard.writeText(shareUrl);
+    alert("Share link copied!");
+  }, []);
 
   if (!isSDKLoaded) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="text-2xl mb-2">🏠</div>
+          <div>Loading Social Tip Jar...</div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -197,311 +168,240 @@ export default function Demo(
         paddingRight: context?.client.safeAreaInsets?.right ?? 0,
       }}
     >
-      <div className="mx-auto py-2 px-4 pb-20">
-        <Header neynarUser={neynarUser} />
-
-        <h1 className="text-2xl font-bold text-center mb-4">{title}</h1>
-
-        {activeTab === "home" && (
-          <div className="flex items-center justify-center h-[calc(100vh-200px)] px-6">
-            <div className="text-center w-full max-w-md mx-auto">
-              <p className="text-lg mb-2">Put your content here!</p>
-              <p className="text-sm text-gray-500">Powered by Neynar 🪐</p>
-            </div>
+      <div className="mx-auto py-2 px-0 pb-20 relative">
+        
+        {/* Modal Overlay */}
+        {modal.isOpen && (
+          <div className="fixed inset-0 bg-white z-50 overflow-y-auto">
+            {modal.screen === "tipjar-detail" && (
+              <TipJarDetailScreen
+                tipJarId={modal.data?.tipJarId}
+                onBack={closeModal}
+                onSupport={(tipJarId) => {
+                  // Get tip jar title for support screen
+                  const tipJarTitle = "Sample Tip Jar"; // TODO: Get actual title
+                  openSupportScreen(tipJarId, tipJarTitle);
+                }}
+                onShare={handleShare}
+              />
+            )}
+            {modal.screen === "support" && (
+              <SupportScreen
+                tipJarId={modal.data?.tipJarId}
+                tipJarTitle={modal.data?.tipJarTitle}
+                onBack={() => {
+                  // Go back to tip jar detail
+                  setModal({
+                    isOpen: true,
+                    screen: "tipjar-detail",
+                    data: { tipJarId: modal.data?.tipJarId }
+                  });
+                }}
+                onSendTip={handleSendTip}
+              />
+            )}
           </div>
         )}
 
-        {activeTab === "actions" && (
-          <div className="space-y-3 px-6 w-full max-w-md mx-auto">
-            <ShareButton
-              buttonText="Share Mini App"
-              cast={{
-                text: "Check out this awesome frame @1 @2 @3! 🚀🪐",
-                bestFriends: true,
-                embeds: [
-                  `${process.env.NEXT_PUBLIC_URL}/share/${
-                    context?.user?.fid || ""
-                  }`,
-                ],
-              }}
-              className="w-full"
+        {/* Main App Content */}
+        <div className={modal.isOpen ? "hidden" : ""}>
+          <Header neynarUser={neynarUser} />
+
+          {/* Tab Content */}
+          {activeTab === "home" && (
+            <DiscoverScreen
+              onTipJarClick={openTipJarDetail}
+              onCreateClick={handleCreateTipJar}
             />
+          )}
 
-            <Button
-              onClick={() =>
-                actions.openUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-              }
-              className="w-full"
-            >
-              Open Link
-            </Button>
+          {activeTab === "create" && (
+            <CreateTipJarScreen
+              onBack={() => setActiveTab("home")}
+              onSave={handleSaveTipJar}
+              onCancel={() => setActiveTab("home")}
+            />
+          )}
 
-            <Button onClick={actions.close} className="w-full">
-              Close Mini App
-            </Button>
+          {activeTab === "profile" && (
+            <DashboardScreen
+              onTipJarClick={openTipJarDetail}
+              onCreateNew={handleCreateTipJar}
+              onWithdraw={handleWithdraw}
+              onViewAnalytics={() => alert("Analytics coming soon!")}
+              onViewMessages={() => alert("Messages coming soon!")}
+              onEditTipJar={(id) => alert(`Edit tip jar ${id}`)}
+              onShareTipJar={handleShare}
+            />
+          )}
 
-            <Button
-              onClick={actions.addMiniApp}
-              disabled={added}
-              className="w-full"
-            >
-              Add Mini App to Client
-            </Button>
-
-            {sendNotificationResult && (
-              <div className="text-sm w-full">
-                Send notification result: {sendNotificationResult}
+          {activeTab === "wallet" && (
+            <div className="px-4 py-6 max-w-md mx-auto">
+              {/* Wallet Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h1 className="text-xl font-bold text-gray-900">💰 Wallet</h1>
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                  <span className="text-sm">👤</span>
+                </div>
               </div>
-            )}
-            <Button
-              onClick={sendNotification}
-              disabled={!notificationDetails}
-              className="w-full"
-            >
-              Send notification
-            </Button>
 
-            <Button
-              onClick={async () => {
-                if (context?.user?.fid) {
-                  const shareUrl = `${process.env.NEXT_PUBLIC_URL}/share/${context.user.fid}`;
-                  await navigator.clipboard.writeText(shareUrl);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }
-              }}
-              disabled={!context?.user?.fid}
-              className="w-full"
-            >
-              {copied ? "Copied!" : "Copy share URL"}
-            </Button>
-          </div>
-        )}
-
-        {activeTab === "context" && (
-          <div className="mx-6">
-            <h2 className="text-lg font-semibold mb-2 text-foreground">
-              Context
-            </h2>
-            <div className="p-4 bg-card text-card-foreground rounded-lg border border-border">
-              <pre className="font-mono text-xs whitespace-pre-wrap break-words w-full">
-                {JSON.stringify(context, null, 2)}
-              </pre>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "wallet" && USE_WALLET && (
-          <div className="space-y-3 px-6 w-full max-w-md mx-auto">
-            {address && (
-              <div className="text-xs w-full">
-                Address:{" "}
-                <pre className="inline w-full">{truncateAddress(address)}</pre>
-              </div>
-            )}
-
-            {chainId && (
-              <div className="text-xs w-full">
-                Chain ID: <pre className="inline w-full">{chainId}</pre>
-              </div>
-            )}
-
-            {isConnected ? (
-              <Button onClick={() => disconnect()} className="w-full">
-                Disconnect
-              </Button>
-            ) : context ? (
-              <Button
-                onClick={() => connect({ connector: connectors[0] })}
-                className="w-full"
-              >
-                Connect
-              </Button>
-            ) : (
-              <div className="space-y-3 w-full">
-                <Button
-                  onClick={() => connect({ connector: connectors[1] })}
-                  className="w-full"
-                >
-                  Connect Coinbase Wallet
-                </Button>
-                <Button
-                  onClick={() => connect({ connector: connectors[2] })}
-                  className="w-full"
-                >
-                  Connect MetaMask
-                </Button>
-              </div>
-            )}
-
-            <SignEvmMessage />
-
-            {isConnected && (
-              <>
-                <SendEth />
-                <Button
-                  onClick={sendTx}
-                  disabled={!isConnected || isSendTxPending}
-                  isLoading={isSendTxPending}
-                  className="w-full"
-                >
-                  Send Transaction (contract)
-                </Button>
-                {isSendTxError && renderError(sendTxError)}
-                {txHash && (
-                  <div className="text-xs w-full">
-                    <div>Hash: {truncateAddress(txHash)}</div>
-                    <div>
-                      Status:{" "}
-                      {isConfirming
-                        ? "Confirming..."
-                        : isConfirmed
-                        ? "Confirmed!"
-                        : "Pending"}
+              {/* Connection Status */}
+              <div className="space-y-4">
+                {!isConnected ? (
+                  <div className="text-center py-8">
+                    <div className="text-4xl mb-4">🔗</div>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                      Connect Your Wallet
+                    </h2>
+                    <p className="text-gray-600 mb-6">
+                      Connect your wallet to start sending and receiving tips
+                    </p>
+                    
+                    <div className="space-y-3">
+                      {connectors.map((connector) => (
+                        <Button
+                          key={connector.id}
+                          onClick={() => connect({ connector })}
+                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg"
+                        >
+                          Connect {connector.name}
+                        </Button>
+                      ))}
                     </div>
                   </div>
-                )}
-                <Button
-                  onClick={signTyped}
-                  disabled={!isConnected || isSignTypedPending}
-                  isLoading={isSignTypedPending}
-                  className="w-full"
-                >
-                  Sign Typed Data
-                </Button>
-                {isSignTypedError && renderError(signTypedError)}
-                <Button
-                  onClick={handleSwitchChain}
-                  disabled={isSwitchChainPending}
-                  isLoading={isSwitchChainPending}
-                  className="w-full"
-                >
-                  Switch to {nextChain.name}
-                </Button>
-                {isSwitchChainError && renderError(switchChainError)}
-              </>
-            )}
-          </div>
-        )}
+                ) : (
+                  <div className="space-y-6">
+                    {/* Wallet Address */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 mb-1">Wallet Address</div>
+                      <div className="font-mono text-sm text-gray-900">
+                        {truncateAddress(address!)}
+                      </div>
+                    </div>
 
-        <Footer
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          showWallet={USE_WALLET}
-        />
+                    {/* Balances */}
+                    <div className="space-y-3">
+                      <h3 className="font-semibold text-gray-900">Token Balances</h3>
+                      
+                      {/* ETH Balance */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">ETH</span>
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">Ethereum</div>
+                              <div className="text-sm text-gray-600">ETH</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-gray-900">
+                              {ethBalance ? parseFloat(ethBalance.formatted).toFixed(4) : "0.0000"}
+                            </div>
+                            <div className="text-sm text-gray-600">ETH</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* USDC Balance */}
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">$</span>
+                            </div>
+                            <div>
+                              <div className="font-medium text-gray-900">USD Coin</div>
+                              <div className="text-sm text-gray-600">USDC</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-gray-900">
+                              {usdcBalance ? parseFloat(usdcBalance.formatted).toFixed(2) : "0.00"}
+                            </div>
+                            <div className="text-sm text-gray-600">USDC</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Network Info */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="text-sm text-gray-600 mb-1">Network</div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        <span className="font-medium text-gray-900">Base Network</span>
+                      </div>
+                    </div>
+
+                    {/* Disconnect Button */}
+                    <Button
+                      onClick={() => disconnect()}
+                      className="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-lg"
+                    >
+                      Disconnect Wallet
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Custom Footer for Social Tip Jar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
+            <div className="flex justify-around max-w-md mx-auto">
+              <button
+                onClick={() => setActiveTab("home")}
+                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                  activeTab === "home"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                <span className="text-lg mb-1">🏠</span>
+                <span className="text-xs font-medium">Home</span>
+              </button>
+              
+              <button
+                onClick={() => setActiveTab("create")}
+                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                  activeTab === "create"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                <span className="text-lg mb-1">➕</span>
+                <span className="text-xs font-medium">Create</span>
+              </button>
+              
+              <button
+                onClick={() => setActiveTab("profile")}
+                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                  activeTab === "profile"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                <span className="text-lg mb-1">👤</span>
+                <span className="text-xs font-medium">Profile</span>
+              </button>
+              
+              <button
+                onClick={() => setActiveTab("wallet")}
+                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
+                  activeTab === "wallet"
+                    ? "bg-blue-100 text-blue-600"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
+              >
+                <span className="text-lg mb-1">💰</span>
+                <span className="text-xs font-medium">Wallet</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-function SignEvmMessage() {
-  const { isConnected } = useAccount();
-  const { connectAsync } = useConnect();
-  const {
-    signMessage,
-    data: signature,
-    error: signError,
-    isError: isSignError,
-    isPending: isSignPending,
-  } = useSignMessage();
-
-  const handleSignMessage = useCallback(async () => {
-    if (!isConnected) {
-      await connectAsync({
-        chainId: base.id,
-        connector: config.connectors[0],
-      });
-    }
-
-    signMessage({ message: "Hello from Frames v2!" });
-  }, [connectAsync, isConnected, signMessage]);
-
-  return (
-    <>
-      <Button
-        onClick={handleSignMessage}
-        disabled={isSignPending}
-        isLoading={isSignPending}
-      >
-        Sign Message
-      </Button>
-      {isSignError && renderError(signError)}
-      {signature && (
-        <div className="mt-2 text-xs">
-          <div>Signature: {signature}</div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function SendEth() {
-  const { isConnected, chainId } = useAccount();
-  const {
-    sendTransaction,
-    data,
-    error: sendTxError,
-    isError: isSendTxError,
-    isPending: isSendTxPending,
-  } = useSendTransaction();
-
-  const { isLoading: isConfirming, isSuccess: isConfirmed } =
-    useWaitForTransactionReceipt({
-      hash: data,
-    });
-
-  const toAddr = useMemo(() => {
-    // Protocol guild address
-    return chainId === base.id
-      ? "0x32e3C7fD24e175701A35c224f2238d18439C7dBC"
-      : "0xB3d8d7887693a9852734b4D25e9C0Bb35Ba8a830";
-  }, [chainId]);
-
-  const handleSend = useCallback(() => {
-    sendTransaction({
-      to: toAddr,
-      value: 1n,
-    });
-  }, [toAddr, sendTransaction]);
-
-  return (
-    <>
-      <Button
-        onClick={handleSend}
-        disabled={!isConnected || isSendTxPending}
-        isLoading={isSendTxPending}
-      >
-        Send Transaction (eth)
-      </Button>
-      {isSendTxError && renderError(sendTxError)}
-      {data && (
-        <div className="mt-2 text-xs">
-          <div>Hash: {truncateAddress(data)}</div>
-          <div>
-            Status:{" "}
-            {isConfirming
-              ? "Confirming..."
-              : isConfirmed
-              ? "Confirmed!"
-              : "Pending"}
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-const renderError = (error: Error | null) => {
-  if (!error) return null;
-  if (error instanceof BaseError) {
-    const isUserRejection = error.walk(
-      (e) => e instanceof UserRejectedRequestError
-    );
-
-    if (isUserRejection) {
-      return <div className="text-red-500 text-xs mt-1">Rejected by user.</div>;
-    }
-  }
-
-  return <div className="text-red-500 text-xs mt-1">{error.message}</div>;
-};
