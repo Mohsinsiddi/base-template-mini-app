@@ -65,18 +65,29 @@ const mockTipJarDetail: TipJar & {
 interface TipJarDetailScreenProps {
   tipJarId: string;
   onBack?: () => void;
-  onSupport?: (tipJarId: string, amount: number) => void;
+  onSendTip?: (tipData: {
+    tipJarId: string;
+    amount: number;
+    message?: string;
+    showName: boolean;
+  }) => void;
   onShare?: (tipJarId: string) => void;
+  isConnected?: boolean;
+  isProcessing?: boolean;
 }
 
 export default function TipJarDetailScreen({ 
   tipJarId, 
   onBack, 
-  onSupport,
-  onShare 
+  onSendTip,
+  onShare,
+  isConnected = false,
+  isProcessing = false
 }: TipJarDetailScreenProps) {
-  const [selectedAmount, setSelectedAmount] = useState<number | undefined>();
   const [showAllSupporters, setShowAllSupporters] = useState(false);
+  const [selectedAmount, setSelectedAmount] = useState<number | undefined>();
+  const [message, setMessage] = useState("");
+  const [showName, setShowName] = useState(true);
   
   // In real app, fetch tip jar details by tipJarId
   const tipJar = mockTipJarDetail;
@@ -84,10 +95,28 @@ export default function TipJarDetailScreen({
   const percentage = Math.round((tipJar.currentAmount / tipJar.targetAmount) * 100);
   const displayedSupporters = showAllSupporters ? tipJar.supporters : tipJar.supporters.slice(0, 4);
 
-  const handleSupport = () => {
-    if (selectedAmount) {
-      onSupport?.(tipJarId, selectedAmount);
+  const handleSendTip = () => {
+    if (!selectedAmount || !onSendTip) {
+      console.log("TipJarDetail: Missing amount or onSendTip handler");
+      return;
     }
+
+    const tipData = {
+      tipJarId,
+      amount: selectedAmount,
+      message: message.trim() || undefined,
+      showName
+    };
+
+    console.log("TipJarDetail: Sending tip data:", tipData);
+    onSendTip(tipData);
+  };
+
+  const getButtonText = () => {
+    if (isProcessing) return "Processing...";
+    if (!isConnected) return "Connect Wallet to Tip";
+    if (selectedAmount) return `💳 Send $${selectedAmount} USDC`;
+    return "💳 Select Amount to Continue";
   };
 
   return (
@@ -180,25 +209,129 @@ export default function TipJarDetailScreen({
           </p>
         </div>
 
-        {/* Enhanced Quick Tip Section */}
+        {/* Enhanced Amount Selection */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
-            💰 <span>Quick Tip Amounts</span>
-          </h3>
+          <h2 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+            💰 <span>Choose Your Tip Amount</span>
+          </h2>
           <QuickTipButtons
             onAmountSelect={setSelectedAmount}
             selectedAmount={selectedAmount}
+            variant="default"
+            showCustom={true}
+            disabled={isProcessing}
           />
         </div>
 
-        {/* Enhanced Support Button */}
+        {/* Enhanced Message Input */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <label className="block text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+            💬 <span>Leave a message (optional)</span>
+          </label>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Good luck with your project!"
+            rows={3}
+            maxLength={200}
+            disabled={isProcessing}
+            className="w-full px-4 py-4 border border-border rounded-xl bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary resize-none transition-all duration-200 disabled:opacity-50"
+          />
+          <div className="text-xs text-muted-foreground mt-2 text-right">
+            {message.length}/200
+          </div>
+        </div>
+
+        {/* Enhanced Show Name Toggle */}
+        <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                <span className="text-lg">👤</span>
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Show my name publicly
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Let others see who supported this project
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowName(!showName)}
+              disabled={isProcessing}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 disabled:opacity-50 ${
+                showName ? "bg-primary" : "bg-accent"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-200 ${
+                  showName ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Transaction Summary */}
+        {selectedAmount && (
+          <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+              📊 <span>Transaction Summary</span>
+            </h3>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Tip Amount:</span>
+                <span className="font-semibold text-foreground">${selectedAmount.toFixed(2)} USDC</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Network:</span>
+                <span className="text-foreground">Base</span>
+              </div>
+              <div className="border-t border-primary/20 pt-3 flex justify-between items-center">
+                <span className="font-bold text-foreground">You Send:</span>
+                <span className="font-bold text-foreground text-lg">${selectedAmount.toFixed(2)} USDC</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Send Button */}
         <Button
-          onClick={handleSupport}
-          disabled={!selectedAmount}
+          onClick={handleSendTip}
+          disabled={!selectedAmount || isProcessing || !isConnected}
+          isLoading={isProcessing}
           className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white py-4 rounded-2xl font-bold text-lg shadow-lg disabled:from-muted disabled:to-muted disabled:text-muted-foreground transition-all duration-200"
         >
-          {selectedAmount ? `💰 Support with ${selectedAmount}` : "💰 Select Amount to Support"}
+          {getButtonText()}
         </Button>
+
+        {/* Enhanced Preview */}
+        {selectedAmount && isConnected && (
+          <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
+            <h4 className="text-sm font-bold text-blue-700 mb-3 flex items-center gap-2">
+              👁️ <span>Preview</span>
+            </h4>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-blue-800">
+                <div className="w-6 h-6 bg-blue-500/20 rounded-full flex items-center justify-center">
+                  <span className="text-xs">{showName ? "👤" : "🔒"}</span>
+                </div>
+                <span className="font-medium">
+                  {showName ? "You" : "Anonymous"}
+                </span>
+                <span>will tip</span>
+                <span className="font-bold text-blue-900">${selectedAmount} USDC</span>
+              </div>
+              {message && (
+                <div className="mt-3 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                  <div className="text-sm text-blue-800 italic">"{message}"</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Enhanced Recent Support */}
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
@@ -254,6 +387,16 @@ export default function TipJarDetailScreen({
           <div className="text-center bg-gradient-to-r from-orange-500/10 to-orange-600/10 p-4 rounded-xl border border-orange-500/20">
             <div className="text-2xl font-bold text-orange-600">{tipJar.daysLeft || "∞"}</div>
             <div className="text-xs text-orange-600/80 font-medium">Days Left</div>
+          </div>
+        </div>
+
+        {/* Enhanced Security Note */}
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground bg-accent/30 px-4 py-3 rounded-xl border border-border">
+            <div className="w-6 h-6 bg-green-500/10 rounded-full flex items-center justify-center">
+              <span className="text-xs">🔒</span>
+            </div>
+            <span>Secured by Base blockchain</span>
           </div>
         </div>
       </div>

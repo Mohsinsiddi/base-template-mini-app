@@ -166,6 +166,7 @@ export default function Demo(
 
   // Navigation Handlers
   const openTipJarDetail = useCallback((tipJarId: string) => {
+    console.log("Demo: Opening tip jar detail for", tipJarId);
     setModal({
       isOpen: true,
       screen: "tipjar-detail",
@@ -173,15 +174,24 @@ export default function Demo(
     });
   }, []);
 
-  const openSupportScreen = useCallback((tipJarId: string, tipJarTitle: string) => {
+  const openSupportScreen = useCallback((tipJarId: string) => {
+    console.log("Demo: Opening support screen for", tipJarId);
+    // Check wallet connection first
+    if (!isConnected) {
+      setSuccessMessage("⚠️ Please connect your wallet first to send tips");
+      setActiveTab("profile");
+      return;
+    }
+    
     setModal({
       isOpen: true,
       screen: "support", 
-      data: { tipJarId, tipJarTitle }
+      data: { tipJarId, tipJarTitle: "Coffee for my startup" } // TODO: Get actual title
     });
-  }, []);
+  }, [isConnected]);
 
   const closeModal = useCallback(() => {
+    console.log("Demo: Closing modal");
     setModal({ isOpen: false, screen: null, data: null });
   }, []);
 
@@ -206,7 +216,7 @@ export default function Demo(
     message?: string;
     showName: boolean;
   }) => {
-    console.log("💰 Sending USDC tip:", tipData);
+    console.log("Demo: Received tip data from SupportScreen:", tipData);
     
     if (!isConnected || !address) {
       setSuccessMessage("⚠️ Please connect your wallet first!");
@@ -219,6 +229,12 @@ export default function Demo(
       
       // Convert amount to USDC units (6 decimals)
       const amountInUnits = parseUnits(tipData.amount.toString(), 6);
+      
+      console.log("Demo: Initiating USDC transfer...", {
+        amount: tipData.amount,
+        amountInUnits: amountInUnits.toString(),
+        to: DEMO_RECIPIENT_ADDRESS
+      });
       
       // Execute USDC transfer
       writeContract({
@@ -254,17 +270,6 @@ export default function Demo(
       setSuccessMessage("📱 Share feature coming soon!");
     }
   }, []);
-
-  // Check if wallet is connected before showing support screen
-  const handleSupportWithWalletCheck = useCallback((tipJarId: string, tipJarTitle: string) => {
-    if (!isConnected) {
-      setSuccessMessage("⚠️ Please connect your wallet first to send tips");
-      setActiveTab("profile"); // Redirect to profile to connect wallet
-      return;
-    }
-    
-    openSupportScreen(tipJarId, tipJarTitle);
-  }, [isConnected, openSupportScreen]);
 
   // Success Modal Component
   const SuccessModal = ({ data }: { data: any }) => (
@@ -417,34 +422,17 @@ export default function Demo(
     >
       <div className="mx-auto py-2 px-0 pb-20 relative">
         
-        {/* Modal Overlay */}
+                  {/* Modal Overlay */}
         {modal.isOpen && (
           <div className="fixed inset-0 bg-white z-50 overflow-y-auto">
             {modal.screen === "tipjar-detail" && (
               <TipJarDetailScreen
                 tipJarId={modal.data?.tipJarId}
                 onBack={closeModal}
-                onSupport={(tipJarId) => {
-                  // Get tip jar title for support screen
-                  const tipJarTitle = "Sample Tip Jar"; // TODO: Get actual title
-                  handleSupportWithWalletCheck(tipJarId, tipJarTitle);
-                }}
-                onShare={handleShare}
-              />
-            )}
-            {modal.screen === "support" && (
-              <SupportScreen
-                tipJarId={modal.data?.tipJarId}
-                tipJarTitle={modal.data?.tipJarTitle}
-                onBack={() => {
-                  // Go back to tip jar detail
-                  setModal({
-                    isOpen: true,
-                    screen: "tipjar-detail",
-                    data: { tipJarId: modal.data?.tipJarId }
-                  });
-                }}
                 onSendTip={handleSendTip}
+                onShare={handleShare}
+                isConnected={isConnected}
+                isProcessing={isPending || isConfirming}
               />
             )}
             {modal.screen === "success" && modal.data && (
@@ -575,15 +563,32 @@ export default function Demo(
                         </p>
                         
                         <div className="space-y-2">
-                          {connectors.slice(0, 2).map((connector) => (
+                          {/* Smart Wallet for Frame context */}
+                          {context ? (
                             <Button
-                              key={connector.id}
-                              onClick={() => connect({ connector })}
+                              onClick={() => connect({ connector: connectors[0] })}
                               className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm"
                             >
-                              Connect {connector.name}
+                              Connect Smart Wallet
                             </Button>
-                          ))}
+                          ) : (
+                            <>
+                              {/* Coinbase Wallet */}
+                              <Button
+                                onClick={() => connect({ connector: connectors[1] })}
+                                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-sm"
+                              >
+                                Connect Coinbase Wallet
+                              </Button>
+                              {/* MetaMask */}
+                              <Button
+                                onClick={() => connect({ connector: connectors[2] })}
+                                className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm"
+                              >
+                                Connect MetaMask
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ) : (
